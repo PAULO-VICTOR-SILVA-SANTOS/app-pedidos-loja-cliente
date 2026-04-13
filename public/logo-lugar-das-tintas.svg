@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210" height="54" viewBox="0 0 210 54">
+  <!-- Balde de tinta: corpo -->
+  <rect x="5" y="18" width="24" height="22" rx="4" fill="#FF5A1F"/>
+  <!-- Aba do balde -->
+  <rect x="7" y="13" width="20" height="6" rx="3" fill="#FF7C45"/>
+  <!-- Alça do balde -->
+  <path d="M10 13 Q17 4 24 13" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  <!-- Tinta derramando -->
+  <ellipse cx="17" cy="42" rx="5" ry="7" fill="#FF9A6C" opacity="0.85"/>
+  <path d="M13 40 Q17 52 21 40" fill="#FF7C45" opacity="0.6"/>
+  <!-- Reflexo no balde -->
+  <rect x="9" y="21" width="5" height="10" rx="2" fill="#fff" opacity="0.2"/>
+  <!-- Texto LUGAR DAS -->
+  <text x="38" y="25" font-family="'Trebuchet MS','Segoe UI',Arial,sans-serif" font-size="14" font-weight="900" fill="#ffffff" letter-spacing="1">LUGAR DAS</text>
+  <!-- Texto TINTAS em laranja vibrante -->
+  <text x="38" y="45" font-family="'Trebuchet MS','Segoe UI',Arial,sans-serif" font-size="20" font-weight="900" fill="#FF7C45" letter-spacing="1.5">TINTAS</text>
+</svg>
