@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" width="400" height="220">
+  <defs>
+    <linearGradient id="bg5" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2a3a55"/>
+      <stop offset="100%" style="stop-color:#11213a"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="220" fill="#eef2f7"/>
+  <path fill="url(#bg5)" d="M115 175 L115 95 L105 72 L130 42 L200 55 L270 42 L295 72 L285 95 L285 175 Z"/>
+  <path fill="#ff7c45" opacity="0.9" d="M185 175 L185 120 L215 120 L215 175 Z"/>
+  <ellipse cx="200" cy="48" rx="45" ry="16" fill="#1d3359"/>
+  <text x="200" y="200" text-anchor="middle" fill="#aabbcc" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Casaco · modelo</text>
+</svg>

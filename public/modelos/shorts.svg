@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" width="400" height="220">
+  <defs>
+    <linearGradient id="bg4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f5f0e8"/>
+      <stop offset="100%" style="stop-color:#e8dcc8"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="220" fill="url(#bg4)"/>
+  <path fill="#8b6914" opacity="0.9" d="M145 48 L255 48 L265 72 L268 115 L135 115 L132 72 Z"/>
+  <path fill="#11213a" opacity="0.25" d="M198 72 L202 72 L205 108 L195 108 Z"/>
+  <text x="200" y="200" text-anchor="middle" fill="#5c6b83" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Shorts · modelo</text>
+</svg>

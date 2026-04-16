@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" width="400" height="220">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#fff5f0"/>
+      <stop offset="100%" style="stop-color:#ffe7dc"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="220" fill="url(#bg3)"/>
+  <path fill="#ff5a1f" opacity="0.85" d="M200 32 L230 48 L240 85 L235 175 L165 175 L160 85 L170 48 Z"/>
+  <ellipse cx="200" cy="42" rx="22" ry="10" fill="#ffd84d"/>
+  <text x="200" y="200" text-anchor="middle" fill="#5c6b83" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Vestido · modelo</text>
+</svg>

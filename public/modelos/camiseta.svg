@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" width="400" height="220">
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#eef2f7"/>
+      <stop offset="100%" style="stop-color:#d6dde9"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="220" fill="url(#bg1)"/>
+  <path fill="#11213a" opacity="0.9" d="M120 48 L160 38 L200 52 L240 38 L280 48 L295 78 L285 95 L270 88 L270 175 L130 175 L130 88 L115 95 L105 78 Z"/>
+  <ellipse cx="200" cy="58" rx="38" ry="14" fill="#ff7c45"/>
+  <text x="200" y="200" text-anchor="middle" fill="#5c6b83" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Camiseta · modelo</text>
+</svg>

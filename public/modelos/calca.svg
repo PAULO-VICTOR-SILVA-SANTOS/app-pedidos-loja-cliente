@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" width="400" height="220">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#e8ecf2"/>
+      <stop offset="100%" style="stop-color:#c5d0e0"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="220" fill="url(#bg2)"/>
+  <path fill="#1d3359" d="M155 38 L245 38 L252 55 L265 175 L215 175 L200 95 L185 175 L135 175 L148 55 Z"/>
+  <path fill="#11213a" opacity="0.35" d="M165 100 L235 100 L230 120 L170 120 Z"/>
+  <text x="200" y="200" text-anchor="middle" fill="#5c6b83" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Calça · modelo</text>
+</svg>
