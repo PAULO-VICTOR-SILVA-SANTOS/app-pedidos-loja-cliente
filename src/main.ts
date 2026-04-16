@@ -1,5 +1,13 @@
 import './style.css'
 import logoLugarDasTintas from '../images/LOGO CASTRO MULTIMARCAS.png'
+import camisa1Img from '../images/camisa 1.jpg'
+import camisa2Img from '../images/camisa 2.jpg'
+import camisa3Img from '../images/camisa 3.jpg'
+import cueca1Img from '../images/cueca 1.jpg'
+import cueca2Img from '../images/cueca 2.jpg'
+import short1Img from '../images/short 1.jpg'
+import short2Img from '../images/short 2.jpg'
+import short3Img from '../images/short 3.jpg'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -61,58 +69,91 @@ type AppState = {
 function seedModeloProducts(): Product[] {
   return [
     {
-      id: 'modelo-camiseta',
-      nome: 'Camiseta básica (exemplo)',
-      marca: 'Modelo',
+      id: 'modelo-camisa-1',
+      nome: 'Camisa modelo 1',
+      marca: 'Castro Multimarcas',
       categoria: 'Camisetas e blusas',
-      subcategoria: 'M · Branco',
-      preco: 49.9,
-      imagem: '/modelos/camiseta.svg',
-      uso: 'Exemplo: algodão, gola redonda. Edite preço ou exclua e cadastre suas peças reais.',
+      subcategoria: 'Manga curta',
+      preco: 89.9,
+      imagem: camisa1Img,
+      uso: 'Peça modelo para vitrine inicial do catálogo.',
       modelo: true
     },
     {
-      id: 'modelo-calca',
-      nome: 'Calça jeans (exemplo)',
-      marca: 'Modelo',
-      categoria: 'Calças e jeans',
-      subcategoria: '42 · Azul',
-      preco: 129.9,
-      imagem: '/modelos/calca.svg',
-      uso: 'Exemplo de descrição. Remova as peças modelo quando não precisar mais.',
+      id: 'modelo-camisa-2',
+      nome: 'Camisa modelo 2',
+      marca: 'Castro Multimarcas',
+      categoria: 'Camisetas e blusas',
+      subcategoria: 'Manga curta',
+      preco: 89.9,
+      imagem: camisa2Img,
+      uso: 'Peça modelo para vitrine inicial do catálogo.',
       modelo: true
     },
     {
-      id: 'modelo-vestido',
-      nome: 'Vestido midi (exemplo)',
-      marca: 'Modelo',
-      categoria: 'Vestidos e saias',
-      subcategoria: 'P · Floral',
-      preco: 159.9,
-      imagem: '/modelos/vestido.svg',
-      uso: 'Exemplo para vitrine. O cliente vê no catálogo como qualquer outro produto.',
+      id: 'modelo-camisa-3',
+      nome: 'Camisa modelo 3',
+      marca: 'Castro Multimarcas',
+      categoria: 'Camisetas e blusas',
+      subcategoria: 'Manga curta',
+      preco: 89.9,
+      imagem: camisa3Img,
+      uso: 'Peça modelo para vitrine inicial do catálogo.',
       modelo: true
     },
     {
-      id: 'modelo-shorts',
-      nome: 'Shorts casual (exemplo)',
-      marca: 'Modelo',
+      id: 'modelo-short-1',
+      nome: 'Short modelo 1',
+      marca: 'Castro Multimarcas',
       categoria: 'Shorts e bermudas',
-      subcategoria: 'M · Bege',
-      preco: 79.9,
-      imagem: '/modelos/shorts.svg',
-      uso: 'Substitua por fotos reais das suas peças pelo painel administrativo.',
+      subcategoria: 'Casual',
+      preco: 69.9,
+      imagem: short1Img,
+      uso: 'Peça modelo para vitrine inicial do catálogo.',
       modelo: true
     },
     {
-      id: 'modelo-casaco',
-      nome: 'Casaco leve (exemplo)',
-      marca: 'Modelo',
-      categoria: 'Casacos e jaquetas',
-      subcategoria: 'G · Preto',
-      preco: 189.9,
-      imagem: '/modelos/casaco.svg',
-      uso: 'Último exemplo. Use “Remover peças de exemplo” para tirar todos de uma vez.',
+      id: 'modelo-short-2',
+      nome: 'Short modelo 2',
+      marca: 'Castro Multimarcas',
+      categoria: 'Shorts e bermudas',
+      subcategoria: 'Casual',
+      preco: 69.9,
+      imagem: short2Img,
+      uso: 'Peça modelo para vitrine inicial do catálogo.',
+      modelo: true
+    },
+    {
+      id: 'modelo-short-3',
+      nome: 'Short modelo 3',
+      marca: 'Castro Multimarcas',
+      categoria: 'Shorts e bermudas',
+      subcategoria: 'Casual',
+      preco: 69.9,
+      imagem: short3Img,
+      uso: 'Peça modelo para vitrine inicial do catálogo.',
+      modelo: true
+    },
+    {
+      id: 'modelo-cueca-1',
+      nome: 'Cueca modelo 1',
+      marca: 'Castro Multimarcas',
+      categoria: 'Outros',
+      subcategoria: 'Moda intima',
+      preco: 39.9,
+      imagem: cueca1Img,
+      uso: 'Peça modelo para vitrine inicial do catálogo.',
+      modelo: true
+    },
+    {
+      id: 'modelo-cueca-2',
+      nome: 'Cueca modelo 2',
+      marca: 'Castro Multimarcas',
+      categoria: 'Outros',
+      subcategoria: 'Moda intima',
+      preco: 39.9,
+      imagem: cueca2Img,
+      uso: 'Peça modelo para vitrine inicial do catálogo.',
       modelo: true
     }
   ]
