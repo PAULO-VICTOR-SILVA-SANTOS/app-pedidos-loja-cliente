@@ -6,6 +6,8 @@ import logoLugarDasTintas from '../images/Logo Lugar Das tintas.JPG'
 type Step = 'cadastro' | 'catalogo' | 'carrinho' | 'checkout' | 'concluido' | 'admin'
 
 type Customer = {
+  /** Somente dígitos (11), ou string vazia */
+  cpf: string
   nomeCompleto: string
   enderecoCompleto: string
   nomeOficina: string
@@ -14,14 +16,14 @@ type Customer = {
 }
 
 type Category =
-  | 'primers'
-  | 'vernizes'
-  | 'massas'
-  | 'tintas poliester'
-  | 'tintas pu'
-  | 'tintas sintetica'
-  | 'tintas laca'
-  | 'lixas'
+  | 'Camisetas e blusas'
+  | 'Calças e jeans'
+  | 'Vestidos e saias'
+  | 'Shorts e bermudas'
+  | 'Calçados'
+  | 'Acessórios'
+  | 'Casacos e jaquetas'
+  | 'Outros'
 
 type Product = {
   id: string
@@ -32,12 +34,8 @@ type Product = {
   preco: number
   imagem: string
   uso: string
-  fonte: string
   custom?: boolean // adicionado pelo admin
 }
-
-type DeliveryMode = 'entrega' | 'retirada'
-type PaymentMethod = 'pix' | 'cartao_link' | 'maquineta' | 'dinheiro'
 
 type AppState = {
   step: Step
@@ -46,245 +44,332 @@ type AppState = {
   filtroBusca: string
   filtroCategoria: 'todas' | Category
   cart: Record<string, number>
-  deliveryMode: DeliveryMode
-  paymentMethod: PaymentMethod
+  /** id da modalidade configurada em checkoutOptions */
+  deliveryMode: string
+  /** id da forma de pagamento configurada em checkoutOptions */
+  paymentMethod: string
   cashChangeFor: string
   isAdminAuthenticated: boolean
   pedidoNumero: string
   fichaTecnicaId: string | null
 }
 
-// ─── Catálogo base ───────────────────────────────────────────────────────────
+// ─── Catálogo base (loja de roupas: começa vazio; o dono cadastra no admin) ───
 
-const defaultProducts: Product[] = [
-  {
-    id: 'maza-primer-fast-6500',
-    nome: 'Kit Primer PU Fast 6500',
-    marca: 'Maza',
-    categoria: 'primers',
-    preco: 289.9,
-    imagem:
-      'https://maza.com.br/images/banners/Esmalte_PU_Acetinado_PNG(4).png',
-    uso: 'Primer PU de secagem rápida para preparação de chapa e repintura. Excelente aderência e nivelamento.',
-    fonte: 'https://www.maza.com.br/produto/109/kit-primer-pu-fast-6500'
-  },
-  {
-    id: 'maza-primer-pu1500',
-    nome: 'Kit Primer PU1500',
-    marca: 'Maza',
-    categoria: 'primers',
-    preco: 229.9,
-    imagem: 'https://maza.com.br/images/banners/Esmalte_PU_Acetinado_PNG(1).png',
-    uso: 'Primer PU para nivelamento antes de base e verniz. Alta cobertura.',
-    fonte: 'https://www.maza.com.br/produto/106/kit-primer-pu1500'
-  },
-  {
-    id: 'maza-primer-sintetico',
-    nome: 'Primer Sintético Vermelho Óxido',
-    marca: 'Maza',
-    categoria: 'primers',
-    preco: 149.9,
-    imagem: 'https://maza.com.br/images/banners/Design%20sem%20nome%20(84).png',
-    uso: 'Primer anticorrosivo para aplicação direta em metal lixado.',
-    fonte: 'https://www.maza.com.br/produto/99/primer-sintetico-vermelho-oxido'
-  },
-  {
-    id: 'maza-verniz-5500',
-    nome: 'Kit Verniz PU Alto Sólidos 5500',
-    marca: 'Maza',
-    categoria: 'vernizes',
-    preco: 399.9,
-    imagem:
-      'https://maza.com.br/images/banners/KIT%20VERNIZ%20PU%20ALTO%20SOLIDOS%205500%20-%20SITE.png',
-    uso: 'Verniz PU para acabamento de alta resistência e brilho intenso. Secagem rápida.',
-    fonte: 'https://www.maza.com.br/produto/120/kit-verniz-pu-alto-solidos-5500'
-  },
-  {
-    id: 'maza-verniz-pu-1500',
-    nome: 'Kit Verniz PU 1500',
-    marca: 'Maza',
-    categoria: 'vernizes',
-    preco: 329.9,
-    imagem: 'https://maza.com.br/images/banners/Kit_Primer_1500_PNG.png',
-    uso: 'Verniz PU brilhante com ótima resistência química e intempéries.',
-    fonte: 'https://www.maza.com.br/produto/118/kit-verniz-pu-1500'
-  },
-  {
-    id: 'maza-mazadur-poliester',
-    nome: 'Mazadur Poliéster',
-    marca: 'Maza',
-    categoria: 'tintas poliester',
-    preco: 219.9,
-    imagem:
-      'https://maza.com.br/images/banners/Mazadur_Poliester_Galao_PNG.png',
-    uso: 'Tinta poliéster para repintura automotiva com excelente cobertura e rendimento.',
-    fonte: 'https://www.maza.com.br/produto/117/mazadur-poliester'
-  },
-  {
-    id: 'maza-mazadur-pu',
-    nome: 'Mazadur PU',
-    marca: 'Maza',
-    categoria: 'tintas pu',
-    preco: 259.9,
-    imagem: 'https://maza.com.br/images/banners/Design%20sem%20nome%20(88).png',
-    uso: 'Tinta PU bicomponente para acabamento com alta resistência química e mecânica.',
-    fonte: 'https://www.maza.com.br/produto/116/mazadur-pu'
-  },
-  {
-    id: 'maza-mazalux',
-    nome: 'Mazalux (Tinta Sintética)',
-    marca: 'Maza',
-    categoria: 'tintas sintetica',
-    preco: 164.9,
-    imagem: 'https://maza.com.br/images/banners/Design%20sem%20nome%20(74).png',
-    uso: 'Esmalte sintético para manutenção e pintura geral automotiva em peças metálicas.',
-    fonte: 'https://www.maza.com.br/produto/114/mazalux'
-  },
-  {
-    id: 'maza-mazalac',
-    nome: 'Mazalac (Laca)',
-    marca: 'Maza',
-    categoria: 'tintas laca',
-    preco: 189.9,
-    imagem:
-      'https://maza.com.br/images/banners/Maza_Automotivo_Mazalac_Galao.png',
-    uso: 'Laca nitrocelulose para acabamentos finos e reparos rápidos com secagem acelerada.',
-    fonte: 'https://www.maza.com.br/produto/115/mazalac'
-  },
-  {
-    id: 'sherwin-lazzudur',
-    nome: 'Lazzudur (Base Poliéster)',
-    marca: 'Sherwin-Williams',
-    categoria: 'tintas poliester',
-    preco: 279.9,
-    imagem:
-      'https://www.sherwin-auto.com.br/wp-content/uploads/2021/08/sherwinauto-default.jpg',
-    uso: 'Base poliéster para sistema de cores e repintura automotiva de alta cobertura.',
-    fonte:
-      'https://www.sherwin-auto.com.br/produtos/tintas/tintas-base-poliester/lazzudur/'
-  },
-  {
-    id: 'sherwin-lazzudur-pu',
-    nome: 'Lazzudur PU',
-    marca: 'Sherwin-Williams',
-    categoria: 'tintas pu',
-    preco: 309.9,
-    imagem:
-      'https://www.sherwin-auto.com.br/wp-content/uploads/2021/08/sherwinauto-default.jpg',
-    uso: 'Base poliuretano com secagem controlada, resistência mecânica e brilho superior.',
-    fonte:
-      'https://www.sherwin-auto.com.br/produtos/tintas/tintas-base-poliuretano/lazzudur-pu/'
-  },
-  {
-    id: 'sherwin-lazzuril-sintetico',
-    nome: 'Lazzuril Esmalte Sintético',
-    marca: 'Sherwin-Williams',
-    categoria: 'tintas sintetica',
-    preco: 179.9,
-    imagem:
-      'https://www.sherwin-auto.com.br/wp-content/uploads/2021/08/sherwinauto-default.jpg',
-    uso: 'Esmalte sintético para pintura de peças e estruturas metálicas com boa durabilidade.',
-    fonte:
-      'https://www.sherwin-auto.com.br/produtos/tintas/tintas-esmalte-sintetico/lazzuril-esmalte-sintetico/'
-  },
-  {
-    id: 'sherwin-lazzulac',
-    nome: 'Lazzulac (Laca Nitrocelulose)',
-    marca: 'Sherwin-Williams',
-    categoria: 'tintas laca',
-    preco: 209.9,
-    imagem:
-      'https://www.sherwin-auto.com.br/wp-content/uploads/2021/08/sherwinauto-default.jpg',
-    uso: 'Laca nitrocelulose voltada para acabamento com secagem rápida e brilho.',
-    fonte:
-      'https://www.sherwin-auto.com.br/produtos/tintas/tintas-laca-nitrocelulose/lazzulac/'
-  },
-  {
-    id: 'sherwin-primer-pu',
-    nome: 'Primer PU Sherwin',
-    marca: 'Sherwin-Williams',
-    categoria: 'primers',
-    preco: 249.9,
-    imagem:
-      'https://www.sherwin-auto.com.br/wp-content/uploads/2021/08/sherwinauto-default.jpg',
-    uso: 'Primer PU para nivelamento de superfície antes da base e verniz. Excelente aderência.',
-    fonte: 'https://www.sherwin-auto.com.br/produto/primers/primers-primer-pu/'
-  },
-  {
-    id: 'sherwin-verniz-pu',
-    nome: 'Verniz PU Sherwin',
-    marca: 'Sherwin-Williams',
-    categoria: 'vernizes',
-    preco: 359.9,
-    imagem:
-      'https://www.sherwin-auto.com.br/wp-content/uploads/2021/08/sherwinauto-default.jpg',
-    uso: 'Verniz PU para proteção UV e acabamento final de alto brilho.',
-    fonte: 'https://www.sherwin-auto.com.br/produto/vernizes/vernizes-vernizes-pu/'
-  },
-  {
-    id: 'sherwin-massa-poliester',
-    nome: 'Massa Poliéster',
-    marca: 'Sherwin-Williams',
-    categoria: 'massas',
-    preco: 69.9,
-    imagem:
-      'https://www.sherwin-auto.com.br/wp-content/uploads/2021/08/sherwinauto-default.jpg',
-    uso: 'Massa para correção de imperfeições antes da aplicação do primer.',
-    fonte: 'https://www.sherwin-auto.com.br/produto/massas/massas-massa-poliester/'
-  },
-  {
-    id: 'lixa-agua-p400',
-    nome: "Lixa d'Água P400",
-    marca: 'Premium Abrasivos',
-    categoria: 'lixas',
-    subcategoria: 'de agua',
-    preco: 4.9,
-    imagem:
-      'https://images.unsplash.com/photo-1581093588401-22d1f7f5f0fd?auto=format&fit=crop&w=800&q=80',
-    uso: 'Lixamento úmido entre etapas de preparação da pintura.',
-    fonte:
-      'https://www.sherwin-auto.com.br/produto/equipamentos-e-acessorios/equipamentos-e-acessorios-abrasivo/'
-  },
-  {
-    id: 'lixa-ferro-p80',
-    nome: 'Lixa para Ferro P80',
-    marca: 'Premium Abrasivos',
-    categoria: 'lixas',
-    subcategoria: 'ferro',
-    preco: 5.5,
-    imagem:
-      'https://images.unsplash.com/photo-1542202229-2df1f7258f6f?auto=format&fit=crop&w=800&q=80',
-    uso: 'Desbaste em metal e remoção de tinta antiga, antes do primer.',
-    fonte:
-      'https://www.sherwin-auto.com.br/produto/equipamentos-e-acessorios/equipamentos-e-acessorios-abrasivo/'
-  },
-  {
-    id: 'lixa-seco-p320',
-    nome: 'Lixa a Seco P320',
-    marca: 'Premium Abrasivos',
-    categoria: 'lixas',
-    subcategoria: 'a seco',
-    preco: 4.2,
-    imagem:
-      'https://images.unsplash.com/photo-1621905251918-48416bd8575a?auto=format&fit=crop&w=800&q=80',
-    uso: 'Lixamento a seco em massa e primer para acabamento uniforme.',
-    fonte:
-      'https://www.sherwin-auto.com.br/produto/equipamentos-e-acessorios/equipamentos-e-acessorios-abrasivo/'
-  }
-]
+const defaultProducts: Product[] = []
 
 // ─── Persistência (LocalStorage) ─────────────────────────────────────────────
 
 const STORAGE_KEYS = {
-  products: 'apd_products',
+  /** Chave nova para catálogo da loja de roupas (sem produtos de exemplo antigos). */
+  products: 'apd_products_roupas',
   state: 'apd_state',
-  customers: 'apd_customers'
+  customers: 'apd_customers',
+  branding: 'apd_store_branding',
+  checkoutOptions: 'apd_checkout_options'
+}
+
+type DeliveryOptionConfig = {
+  id: string
+  title: string
+  description: string
+  /** Se true, na finalização mostra o endereço do cliente no lugar da descrição. */
+  showCustomerAddress: boolean
+}
+
+type PaymentOptionConfig = {
+  id: string
+  title: string
+  detail: string
+  /** Exibe campo “troco para quanto?” e validação em relação ao total. */
+  asksCashChange: boolean
+}
+
+type CheckoutOptions = {
+  deliveryOptions: DeliveryOptionConfig[]
+  paymentOptions: PaymentOptionConfig[]
+}
+
+const DEFAULT_CHECKOUT_OPTIONS: CheckoutOptions = {
+  deliveryOptions: [
+    {
+      id: 'entrega',
+      title: 'Entrega no endereço',
+      description: '',
+      showCustomerAddress: true
+    },
+    {
+      id: 'retirada',
+      title: 'Retirada na loja',
+      description: 'Retire pessoalmente no balcão.',
+      showCustomerAddress: false
+    }
+  ],
+  paymentOptions: [
+    {
+      id: 'pix',
+      title: 'Pix',
+      detail: 'Chave Pix (CNPJ): 13232181000123',
+      asksCashChange: false
+    },
+    {
+      id: 'cartao_link',
+      title: 'Cartão de crédito',
+      detail: 'Solicitar envio do link de pagamento pelo WhatsApp.',
+      asksCashChange: false
+    },
+    {
+      id: 'maquineta',
+      title: 'Cartão na maquineta',
+      detail: 'Solicitar maquineta para pagamento presencial.',
+      asksCashChange: false
+    },
+    {
+      id: 'dinheiro',
+      title: 'Dinheiro',
+      detail: 'Pagamento em espécie na entrega ou retirada.',
+      asksCashChange: true
+    }
+  ]
+}
+
+function normalizeDeliveryOption(raw: Partial<DeliveryOptionConfig>): DeliveryOptionConfig {
+  return {
+    id: String(raw.id ?? `del-${Date.now()}`),
+    title: String(raw.title ?? 'Modalidade').trim() || 'Modalidade',
+    description: typeof raw.description === 'string' ? raw.description : '',
+    showCustomerAddress: raw.showCustomerAddress === true
+  }
+}
+
+function normalizePaymentOption(raw: Partial<PaymentOptionConfig>): PaymentOptionConfig {
+  return {
+    id: String(raw.id ?? `pay-${Date.now()}`),
+    title: String(raw.title ?? 'Pagamento').trim() || 'Pagamento',
+    detail: typeof raw.detail === 'string' ? raw.detail : '',
+    asksCashChange: raw.asksCashChange === true
+  }
+}
+
+function loadCheckoutOptions(): CheckoutOptions {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.checkoutOptions)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<CheckoutOptions>
+      const d = Array.isArray(parsed.deliveryOptions) ? parsed.deliveryOptions : []
+      const p = Array.isArray(parsed.paymentOptions) ? parsed.paymentOptions : []
+      if (d.length > 0 && p.length > 0) {
+        return {
+          deliveryOptions: d.map((x) => normalizeDeliveryOption(x as Partial<DeliveryOptionConfig>)),
+          paymentOptions: p.map((x) => normalizePaymentOption(x as Partial<PaymentOptionConfig>))
+        }
+      }
+    }
+  } catch (_) {
+    /* ignora */
+  }
+  return JSON.parse(JSON.stringify(DEFAULT_CHECKOUT_OPTIONS)) as CheckoutOptions
+}
+
+function saveCheckoutOptions(opts: CheckoutOptions) {
+  localStorage.setItem(STORAGE_KEYS.checkoutOptions, JSON.stringify(opts))
+}
+
+let checkoutOptions = loadCheckoutOptions()
+
+function getDeliveryOption(id: string): DeliveryOptionConfig | undefined {
+  return checkoutOptions.deliveryOptions.find((o) => o.id === id)
+}
+
+function getPaymentOption(id: string): PaymentOptionConfig | undefined {
+  return checkoutOptions.paymentOptions.find((o) => o.id === id)
+}
+
+function clampDeliveryModeId(id: string | undefined): string {
+  const opts = checkoutOptions.deliveryOptions
+  if (id && opts.some((o) => o.id === id)) return id
+  return opts[0]?.id ?? 'entrega'
+}
+
+function clampPaymentMethodId(id: string | undefined): string {
+  const opts = checkoutOptions.paymentOptions
+  if (id && opts.some((o) => o.id === id)) return id
+  return opts[0]?.id ?? 'pix'
+}
+
+type StoreBranding = {
+  /** Nome exibido ao lado da logo e no título da página */
+  nomeEmpresa: string
+  /** Linha menor abaixo do nome (ex.: segmento ou slogan) */
+  tagline: string
+  /** Se vazio, usa a logo embutida do projeto; senão URL https… ou caminho em /public */
+  logoUrl: string
+  /** Opcional: texto institucional sobre a empresa */
+  descricaoEmpresa: string
+  /** Opcional: ramo de atividade (ex.: venda de roupas) */
+  ramoEmpresa: string
+  /** Opcional: endereço da loja */
+  enderecoEmpresa: string
+  /** Opcional: telefone de contato */
+  telefoneEmpresa: string
+}
+
+const DEFAULT_BRANDING: StoreBranding = {
+  nomeEmpresa: 'Lugar das Tintas',
+  tagline: 'LUGAR DAS TINTAS AUTOMOTIVAS',
+  logoUrl: '',
+  descricaoEmpresa: '',
+  ramoEmpresa: '',
+  enderecoEmpresa: '',
+  telefoneEmpresa: ''
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function escapeAttr(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+}
+
+function loadBranding(): StoreBranding {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.branding)
+    if (!raw) return { ...DEFAULT_BRANDING }
+    const parsed = JSON.parse(raw) as Partial<StoreBranding>
+    return {
+      nomeEmpresa: typeof parsed.nomeEmpresa === 'string' && parsed.nomeEmpresa.trim()
+        ? parsed.nomeEmpresa.trim()
+        : DEFAULT_BRANDING.nomeEmpresa,
+      tagline:
+        typeof parsed.tagline === 'string' ? parsed.tagline.trim() : DEFAULT_BRANDING.tagline,
+      logoUrl: typeof parsed.logoUrl === 'string' ? parsed.logoUrl.trim() : '',
+      descricaoEmpresa:
+        typeof parsed.descricaoEmpresa === 'string' ? parsed.descricaoEmpresa.trim() : '',
+      ramoEmpresa: typeof parsed.ramoEmpresa === 'string' ? parsed.ramoEmpresa.trim() : '',
+      enderecoEmpresa:
+        typeof parsed.enderecoEmpresa === 'string' ? parsed.enderecoEmpresa.trim() : '',
+      telefoneEmpresa:
+        typeof parsed.telefoneEmpresa === 'string' ? parsed.telefoneEmpresa.trim() : ''
+    }
+  } catch (_) {
+    /* ignora parse error */
+  }
+  return { ...DEFAULT_BRANDING }
+}
+
+function saveBranding(b: StoreBranding) {
+  localStorage.setItem(STORAGE_KEYS.branding, JSON.stringify(b))
+}
+
+let storeBranding = loadBranding()
+
+function getLogoSrc(): string {
+  return storeBranding.logoUrl || logoLugarDasTintas
+}
+
+function applyDocumentBranding() {
+  const name = storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa
+  document.title = `${name} – Pedidos online`
+  const meta = document.querySelector('meta[name="description"]')
+  if (meta) {
+    const desc = storeBranding.descricaoEmpresa.trim()
+    meta.setAttribute(
+      'content',
+      desc
+        ? desc.slice(0, 160)
+        : `Pedidos online – ${name}. Catálogo, carrinho e finalização do pedido.`
+    )
+  }
+}
+
+function hasStoreExtraInfo(): boolean {
+  const s = storeBranding
+  return Boolean(
+    s.descricaoEmpresa.trim() ||
+      s.ramoEmpresa.trim() ||
+      s.enderecoEmpresa.trim() ||
+      s.telefoneEmpresa.trim()
+  )
+}
+
+/** Bloco opcional “Sobre a loja” para o cliente (cadastro / catálogo). */
+function storeAboutCardHtml(): string {
+  if (!hasStoreExtraInfo()) return ''
+  const s = storeBranding
+  const d = s.descricaoEmpresa.trim()
+  const r = s.ramoEmpresa.trim()
+  const e = s.enderecoEmpresa.trim()
+  const t = s.telefoneEmpresa.trim()
+  const telDigits = t.replace(/\D/g, '')
+  const telLink = telDigits ? `tel:${telDigits}` : ''
+  return `
+    <div class="card store-about-card fade-in">
+      <p class="eyebrow">Sobre a loja</p>
+      ${
+        d
+          ? `<div class="store-about-desc muted">${escapeHtml(d)}</div>`
+          : ''
+      }
+      ${r ? `<p class="store-about-line"><strong>Ramo:</strong> ${escapeHtml(r)}</p>` : ''}
+      ${e ? `<p class="store-about-line"><strong>Endereço:</strong> ${escapeHtml(e)}</p>` : ''}
+      ${
+        t
+          ? `<p class="store-about-line"><strong>Telefone:</strong> ${
+              telLink
+                ? `<a href="${escapeAttr(telLink)}">${escapeHtml(t)}</a>`
+                : escapeHtml(t)
+            }</p>`
+          : ''
+      }
+    </div>
+  `
+}
+
+const CATEGORY_VALUES: Category[] = [
+  'Camisetas e blusas',
+  'Calças e jeans',
+  'Vestidos e saias',
+  'Shorts e bermudas',
+  'Calçados',
+  'Acessórios',
+  'Casacos e jaquetas',
+  'Outros'
+]
+
+const CATEGORY_SET = new Set<string>(CATEGORY_VALUES)
+
+function normalizeCategory(raw: unknown): Category {
+  if (typeof raw === 'string' && CATEGORY_SET.has(raw)) return raw as Category
+  return 'Outros'
+}
+
+function normalizeProduct(raw: unknown): Product {
+  const p = raw as Partial<Product> & { fonte?: string }
+  return {
+    id: String(p.id ?? `item-${Date.now()}`),
+    nome: String(p.nome ?? 'Produto'),
+    marca: String(p.marca ?? '—'),
+    categoria: normalizeCategory(p.categoria),
+    subcategoria: typeof p.subcategoria === 'string' && p.subcategoria.trim() ? p.subcategoria.trim() : undefined,
+    preco: typeof p.preco === 'number' && !Number.isNaN(p.preco) ? p.preco : 0,
+    imagem: String(p.imagem ?? ''),
+    uso: String(p.uso ?? ''),
+    custom: p.custom === true
+  }
 }
 
 function loadProducts(): Product[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.products)
-    if (raw) return JSON.parse(raw) as Product[]
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) return parsed.map(normalizeProduct)
+    }
   } catch (_) { /* ignora parse error */ }
   return [...defaultProducts]
 }
@@ -301,12 +386,55 @@ function normalizeLookup(value: string): string {
     .toLowerCase()
 }
 
+function normalizeCpfDigits(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 11)
+}
+
+/** Máscara visual: 000.000.000-00 */
+function formatCpfDisplay(digits: string): string {
+  const d = normalizeCpfDigits(digits)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`
+}
+
+function isValidCpf(digits: string): boolean {
+  const d = normalizeCpfDigits(digits)
+  if (d.length !== 11) return false
+  if (/^(\d)\1{10}$/.test(d)) return false
+  let sum = 0
+  for (let i = 0; i < 9; i++) sum += parseInt(d[i], 10) * (10 - i)
+  let rest = (sum * 10) % 11
+  if (rest === 10 || rest === 11) rest = 0
+  if (rest !== parseInt(d[9], 10)) return false
+  sum = 0
+  for (let i = 0; i < 10; i++) sum += parseInt(d[i], 10) * (11 - i)
+  rest = (sum * 10) % 11
+  if (rest === 10 || rest === 11) rest = 0
+  return rest === parseInt(d[10], 10)
+}
+
 function loadCustomerProfiles(): Customer[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.customers)
     if (!raw) return []
-    const parsed = JSON.parse(raw) as Customer[]
-    return parsed.filter((c) => !!c?.nomeCompleto)
+    const parsed = JSON.parse(raw) as unknown[]
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((row) => {
+        const c = row as Partial<Customer>
+        if (!c || typeof c.nomeCompleto !== 'string' || !c.nomeCompleto.trim()) return null
+        return {
+          cpf: normalizeCpfDigits(String(c.cpf ?? '')),
+          nomeCompleto: c.nomeCompleto.trim(),
+          nomeOficina: String(c.nomeOficina ?? '').trim(),
+          enderecoCompleto: String(c.enderecoCompleto ?? '').trim(),
+          email: String(c.email ?? '').trim(),
+          whatsapp: String(c.whatsapp ?? '').trim()
+        } satisfies Customer
+      })
+      .filter((c): c is Customer => c !== null)
   } catch (_) { /* ignora parse error */ }
   return []
 }
@@ -318,8 +446,8 @@ function saveCustomerProfiles(list: Customer[]) {
 type PersistedState = {
   customer: Customer
   cart: Record<string, number>
-  deliveryMode: DeliveryMode
-  paymentMethod: PaymentMethod
+  deliveryMode: string
+  paymentMethod: string
   cashChangeFor: string
 }
 
@@ -346,21 +474,28 @@ function persistState() {
 
 const saved = loadState()
 
+const emptyCustomer = (): Customer => ({
+  cpf: '',
+  nomeCompleto: '',
+  enderecoCompleto: '',
+  nomeOficina: '',
+  email: '',
+  whatsapp: ''
+})
+
 const appState: AppState = {
   step: 'cadastro',
   prevStep: 'catalogo',
-  customer: saved.customer ?? {
-    nomeCompleto: '',
-    enderecoCompleto: '',
-    nomeOficina: '',
-    email: '',
-    whatsapp: ''
+  customer: {
+    ...emptyCustomer(),
+    ...(saved.customer ?? {}),
+    cpf: normalizeCpfDigits(String((saved.customer as Partial<Customer> | undefined)?.cpf ?? ''))
   },
   filtroBusca: '',
   filtroCategoria: 'todas',
   cart: saved.cart ?? {},
-  deliveryMode: saved.deliveryMode ?? 'entrega',
-  paymentMethod: saved.paymentMethod ?? 'pix',
+  deliveryMode: clampDeliveryModeId(saved.deliveryMode),
+  paymentMethod: clampPaymentMethodId(saved.paymentMethod),
   cashChangeFor: saved.cashChangeFor ?? '',
   isAdminAuthenticated: false,
   pedidoNumero: '',
@@ -375,17 +510,27 @@ if (appState.customer.nomeCompleto) {
 let products = loadProducts()
 let customerProfiles = loadCustomerProfiles()
 
+applyDocumentBranding()
+
 function findCustomerProfileByName(name: string): Customer | null {
   const key = normalizeLookup(name)
   if (!key) return null
   return customerProfiles.find((c) => normalizeLookup(c.nomeCompleto) === key) ?? null
 }
 
+function findCustomerProfileByCpf(raw: string): Customer | null {
+  const d = normalizeCpfDigits(raw)
+  if (d.length !== 11) return null
+  return customerProfiles.find((c) => normalizeCpfDigits(c.cpf) === d) ?? null
+}
+
 function upsertCustomerProfile(customer: Customer) {
-  const key = normalizeLookup(customer.nomeCompleto)
-  if (!key) return
+  const cpfDigits = normalizeCpfDigits(customer.cpf)
+  const nameKey = normalizeLookup(customer.nomeCompleto)
+  if (!nameKey && cpfDigits.length !== 11) return
 
   const next: Customer = {
+    cpf: cpfDigits,
     nomeCompleto: customer.nomeCompleto.trim(),
     nomeOficina: customer.nomeOficina.trim(),
     enderecoCompleto: customer.enderecoCompleto.trim(),
@@ -393,7 +538,13 @@ function upsertCustomerProfile(customer: Customer) {
     whatsapp: customer.whatsapp.trim()
   }
 
-  const idx = customerProfiles.findIndex((c) => normalizeLookup(c.nomeCompleto) === key)
+  let idx = -1
+  if (cpfDigits.length === 11) {
+    idx = customerProfiles.findIndex((c) => normalizeCpfDigits(c.cpf) === cpfDigits)
+  }
+  if (idx < 0 && nameKey) {
+    idx = customerProfiles.findIndex((c) => normalizeLookup(c.nomeCompleto) === nameKey)
+  }
   if (idx >= 0) customerProfiles[idx] = next
   else customerProfiles.push(next)
   saveCustomerProfiles(customerProfiles)
@@ -411,22 +562,18 @@ function customerNameOptionsHtml() {
     .join('')
 }
 
-const categories: Array<'todas' | Category> = [
-  'todas',
-  'primers',
-  'vernizes',
-  'massas',
-  'tintas poliester',
-  'tintas pu',
-  'tintas sintetica',
-  'tintas laca',
-  'lixas'
-]
+const categories: Array<'todas' | Category> = ['todas', ...CATEGORY_VALUES]
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 const ADMIN_PIN = '1323' // troque por um PIN privado
+
+/** Foto escolhida antes de salvar o produto (data URL). Limpa ao sair do admin. */
+let adminPendingImageDataUrl: string | null = null
+
+/** Logo da loja escolhida em arquivo — aplicada ao salvar identidade. Limpa ao sair do admin. */
+let brandingPendingLogoDataUrl: string | null = null
 
 let adminSecretBound = false
 let adminLogoTapCount = 0
@@ -475,6 +622,10 @@ function setStep(step: Step) {
   if (step === 'admin' && !appState.isAdminAuthenticated) {
     alert('Acesso restrito ao painel administrativo.')
     return
+  }
+  if (step !== 'admin') {
+    adminPendingImageDataUrl = null
+    brandingPendingLogoDataUrl = null
   }
   appState.prevStep = appState.step
   appState.step = step
@@ -538,18 +689,12 @@ function updateQty(id: string, qty: number) {
 }
 
 function resetToNewCustomerRegistration() {
-  appState.customer = {
-    nomeCompleto: '',
-    enderecoCompleto: '',
-    nomeOficina: '',
-    email: '',
-    whatsapp: ''
-  }
+  appState.customer = emptyCustomer()
   appState.cart = {}
   appState.filtroBusca = ''
   appState.filtroCategoria = 'todas'
-  appState.deliveryMode = 'entrega'
-  appState.paymentMethod = 'pix'
+  appState.deliveryMode = clampDeliveryModeId(checkoutOptions.deliveryOptions[0]?.id)
+  appState.paymentMethod = clampPaymentMethodId(checkoutOptions.paymentOptions[0]?.id)
   appState.cashChangeFor = ''
   appState.pedidoNumero = ''
   appState.fichaTecnicaId = null
@@ -563,40 +708,79 @@ function resetToNewCustomerRegistration() {
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────
 
 const LOJA_WHATSAPP = '5583999159349' // número de teste (Brasil)
-const PIX_CNPJ = '13232181000123'
 
-function paymentMethodLabel(method: PaymentMethod): string {
-  const labels: Record<PaymentMethod, string> = {
-    pix: 'Pix',
-    cartao_link: 'Cartão de crédito (link de pagamento)',
-    maquineta: 'Cartão na maquineta (presencial)',
-    dinheiro: 'Dinheiro'
-  }
-  return labels[method]
+function paymentMethodLabel(methodId: string): string {
+  return getPaymentOption(methodId)?.title ?? methodId
 }
 
-function paymentMethodDetail(method: PaymentMethod): string {
-  const details: Record<PaymentMethod, string> = {
-    pix: `Chave Pix (CNPJ): ${PIX_CNPJ}`,
-    cartao_link: 'Solicita envio do link de pagamento por WhatsApp.',
-    maquineta: 'Solicita maquineta para pagamento presencial.',
-    dinheiro: appState.cashChangeFor
-      ? `Pagamento em dinheiro. Troco para: ${currency.format(Number(appState.cashChangeFor))}.`
-      : 'Pagamento em dinheiro na entrega/retirada.'
+function paymentMethodDetail(methodId: string): string {
+  const opt = getPaymentOption(methodId)
+  if (!opt) return ''
+  if (opt.asksCashChange && appState.cashChangeFor) {
+    const changeValue = Number(appState.cashChangeFor)
+    if (!Number.isNaN(changeValue) && changeValue >= cartTotal()) {
+      return `${opt.detail} Troco para: ${currency.format(changeValue)}.`
+    }
   }
-  return details[method]
+  return opt.detail
+}
+
+function deliveryModeSubtitle(o: DeliveryOptionConfig): string {
+  if (o.showCustomerAddress) return appState.customer.enderecoCompleto || '—'
+  return o.description || '—'
+}
+
+function readCheckoutOptionsFromAdminDom(): CheckoutOptions | null {
+  const dBody = document.getElementById('co-delivery-tbody')
+  const pBody = document.getElementById('co-payment-tbody')
+  if (!dBody || !pBody) return null
+  const deliveryOptions: DeliveryOptionConfig[] = []
+  for (const row of dBody.querySelectorAll('tr[data-co-delivery]')) {
+    const id = row.getAttribute('data-co-delivery')
+    if (!id) continue
+    const title = (row.querySelector('.co-inp-delivery-title') as HTMLInputElement).value.trim()
+    const description = (row.querySelector('.co-inp-delivery-desc') as HTMLInputElement).value.trim()
+    const showCustomerAddress = (row.querySelector('.co-inp-delivery-addr') as HTMLInputElement).checked
+    if (!title) {
+      alert('Preencha o título de cada modalidade de entrega.')
+      return null
+    }
+    deliveryOptions.push(normalizeDeliveryOption({ id, title, description, showCustomerAddress }))
+  }
+  const paymentOptions: PaymentOptionConfig[] = []
+  for (const row of pBody.querySelectorAll('tr[data-co-payment]')) {
+    const id = row.getAttribute('data-co-payment')
+    if (!id) continue
+    const title = (row.querySelector('.co-inp-payment-title') as HTMLInputElement).value.trim()
+    const detail = (row.querySelector('.co-inp-payment-detail') as HTMLInputElement).value.trim()
+    const asksCashChange = (row.querySelector('.co-inp-payment-cash') as HTMLInputElement).checked
+    if (!title) {
+      alert('Preencha o título de cada forma de pagamento.')
+      return null
+    }
+    paymentOptions.push(normalizePaymentOption({ id, title, detail, asksCashChange }))
+  }
+  if (!deliveryOptions.length || !paymentOptions.length) {
+    alert('É necessário pelo menos uma modalidade de entrega e uma forma de pagamento.')
+    return null
+  }
+  return { deliveryOptions, paymentOptions }
 }
 
 function buildWhatsAppUrl(): string {
+  const loja = storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa
   const lines: string[] = [
-    `*Novo Pedido - Lugar das Tintas*`,
+    `*Novo Pedido - ${loja}*`,
     `*Nº ${appState.pedidoNumero}*`,
     ``,
     `*Cliente:* ${appState.customer.nomeCompleto}`,
-    `*Oficina:* ${appState.customer.nomeOficina}`,
+    ...(normalizeCpfDigits(appState.customer.cpf).length === 11
+      ? [`*CPF:* ${formatCpfDisplay(appState.customer.cpf)}`]
+      : []),
+    `*Referência / apelido:* ${appState.customer.nomeOficina}`,
     `*E-mail:* ${appState.customer.email}`,
     `*Endereço:* ${appState.customer.enderecoCompleto}`,
-    `*Modalidade:* ${appState.deliveryMode === 'entrega' ? 'Entrega' : 'Retirada na loja'}`,
+    `*Modalidade:* ${getDeliveryOption(appState.deliveryMode)?.title ?? appState.deliveryMode}`,
     `*Pagamento:* ${paymentMethodLabel(appState.paymentMethod)}`,
     `*Detalhe pagamento:* ${paymentMethodDetail(appState.paymentMethod)}`,
     ``,
@@ -628,20 +812,31 @@ function isValidWhatsapp(value: string): boolean {
   return /^\(\d{2}\) \d{5}-\d{4}$/.test(value)
 }
 
+function productImageUrl(imagem: string): string {
+  const u = imagem.trim()
+  return u || 'https://placehold.co/400x220/e8f0fe/1a3a6b?text=Foto'
+}
+
 // ─── Telas ────────────────────────────────────────────────────────────────────
 
 function logoHtml() {
+  const nome = escapeHtml(storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa)
+  const tagRaw = (storeBranding.tagline ?? '').trim()
+  const taglineBlock = tagRaw
+    ? `<span class="brand-tagline">${escapeHtml(tagRaw)}</span>`
+    : ''
+  const src = escapeAttr(getLogoSrc())
   return `
     <div class="brand-logo">
       <img
-        src="${logoLugarDasTintas}"
-        alt="Lugar das Tintas"
+        src="${src}"
+        alt="${nome}"
         onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
       />
       <span class="brand-text" style="display:none">
-        <span class="brand-accent">Lugar</span>&nbsp;das&nbsp;<span class="brand-accent">Tintas</span>
+        <span class="brand-accent">${nome}</span>
       </span>
-      <span class="brand-tagline">LUGAR DAS TINTAS AUTOMOTIVAS</span>
+      ${taglineBlock}
     </div>
   `
 }
@@ -668,69 +863,86 @@ function stepIndicator(active: number) {
 function cadastroScreen() {
   const namesOptions = customerNameOptionsHtml()
   return `
-    <section class="screen card fade-in">
-      ${stepIndicator(1)}
-      <div class="screen-header">
-        <p class="eyebrow">Bem-vindo ao sistema de pedidos</p>
-        <h1>Cadastro do Cliente</h1>
-        <p class="lead">Preencha seus dados para acessar o catálogo e realizar pedidos.</p>
-      </div>
-      <form id="cadastro-form" class="form-grid" novalidate>
-        <datalist id="customer-name-suggestions">${namesOptions}</datalist>
-        <label>
-          Nome completo *
-          <input required id="customer-full-name" name="nomeCompleto" value="${appState.customer.nomeCompleto}"
-            placeholder="Ex: João da Silva" autocomplete="name" list="customer-name-suggestions" />
-        </label>
-        <label>
-          Nome da oficina *
-          <input required id="customer-workshop" name="nomeOficina" value="${appState.customer.nomeOficina}"
-            placeholder="Ex: Auto Center Premium" />
-        </label>
-        <label class="full">
-          Endereço completo *
-          <input required id="customer-address" name="enderecoCompleto" value="${appState.customer.enderecoCompleto}"
-            placeholder="Rua, número, bairro, cidade – CEP" autocomplete="street-address" />
-        </label>
-        <label>
-          E-mail *
-          <input required id="customer-email" type="email" name="email" value="${appState.customer.email}"
-            placeholder="contato@oficina.com" autocomplete="email" />
-        </label>
-        <label>
-          WhatsApp *
-          <input id="customer-whatsapp" type="tel" name="whatsapp" value="${appState.customer.whatsapp}"
-            placeholder="(00) 00000-0000" autocomplete="tel"
-            required maxlength="15" inputmode="numeric" pattern="^\\(\\d{2}\\) \\d{5}-\\d{4}$" />
-        </label>
-        <div class="full form-actions">
-          <button type="submit" class="btn primary">Acessar o Catálogo →</button>
+    <section class="screen fade-in">
+      <div class="card">
+        ${stepIndicator(1)}
+        <div class="screen-header">
+          <p class="eyebrow">Bem-vindo a ${escapeHtml(storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa)}</p>
+          <h1>Cadastro do Cliente</h1>
+          <p class="lead">Preencha seus dados para acessar o catálogo e realizar pedidos. Se você já se cadastrou antes, digite o <strong>CPF</strong> e os demais campos serão preenchidos automaticamente.</p>
         </div>
-      </form>
+        <form id="cadastro-form" class="form-grid" novalidate>
+          <datalist id="customer-name-suggestions">${namesOptions}</datalist>
+          <label>
+            CPF *
+            <input
+              required
+              id="customer-cpf"
+              name="cpf"
+              value="${escapeAttr(formatCpfDisplay(appState.customer.cpf))}"
+              placeholder="000.000.000-00"
+              autocomplete="off"
+              inputmode="numeric"
+              maxlength="14"
+            />
+          </label>
+          <label>
+            Nome completo *
+            <input required id="customer-full-name" name="nomeCompleto" value="${appState.customer.nomeCompleto}"
+              placeholder="Ex: João da Silva" autocomplete="name" list="customer-name-suggestions" />
+          </label>
+          <label>
+            Como prefere ser chamado(a) no pedido *
+            <input required id="customer-workshop" name="nomeOficina" value="${appState.customer.nomeOficina}"
+              placeholder="Ex: @instagram ou primeiro nome" />
+          </label>
+          <label class="full">
+            Endereço completo *
+            <input required id="customer-address" name="enderecoCompleto" value="${appState.customer.enderecoCompleto}"
+              placeholder="Rua, número, bairro, cidade – CEP" autocomplete="street-address" />
+          </label>
+          <label>
+            E-mail *
+            <input required id="customer-email" type="email" name="email" value="${appState.customer.email}"
+              placeholder="seu@email.com" autocomplete="email" />
+          </label>
+          <label>
+            WhatsApp *
+            <input id="customer-whatsapp" type="tel" name="whatsapp" value="${appState.customer.whatsapp}"
+              placeholder="(00) 00000-0000" autocomplete="tel"
+              required maxlength="15" inputmode="numeric" pattern="^\\(\\d{2}\\) \\d{5}-\\d{4}$" />
+          </label>
+          <div class="full form-actions">
+            <button type="submit" class="btn primary">Acessar o Catálogo →</button>
+          </div>
+        </form>
+      </div>
+      ${storeAboutCardHtml()}
     </section>
   `
 }
 
-function catalogCardsHtml() {
-  const filtered = getFiltered()
-  return filtered.length
-    ? filtered
-        .map((p) => {
-          const qty = appState.cart[p.id] ?? 0
-          return `
+function catalogProductCardHtml(p: Product): string {
+  const qty = appState.cart[p.id] ?? 0
+  const imgSrc = escapeAttr(productImageUrl(p.imagem))
+  const chipLine =
+    p.subcategoria != null && String(p.subcategoria).trim()
+      ? `<p class="chip">${escapeHtml(String(p.subcategoria).trim())}</p>`
+      : ''
+  return `
           <article class="product-card">
             <div class="product-img-wrap">
-              <img src="${p.imagem}" alt="${p.nome}" loading="lazy"
-                onerror="this.src='https://placehold.co/400x220/e8f0fe/1a3a6b?text=Produto'" />
+              <img src="${imgSrc}" alt="${escapeHtml(p.nome)}" loading="lazy"
+                onerror="this.src='https://placehold.co/400x220/e8f0fe/1a3a6b?text=Foto'" />
               ${p.custom ? '<span class="badge-custom">Personalizado</span>' : ''}
             </div>
             <div class="product-body">
-              <p class="chip">${p.categoria}${p.subcategoria ? ` · ${p.subcategoria}` : ''}</p>
-              <h3>${p.nome}</h3>
-              <p class="muted small">${p.marca}</p>
-              <p class="muted uso-text">${p.uso}</p>
+              ${chipLine}
+              <h3>${escapeHtml(p.nome)}</h3>
+              <p class="muted small">${escapeHtml(p.marca)}</p>
+              <p class="muted uso-text">${escapeHtml(p.uso)}</p>
               <button class="btn link-btn" data-action="open-tech" data-id="${p.id}">
-                Ver ficha técnica
+                Ver descrição
               </button>
               <div class="product-footer">
                 <strong class="price">${currency.format(p.preco)}</strong>
@@ -744,36 +956,75 @@ function catalogCardsHtml() {
                 ${qty > 0 ? `Ir para carrinho (${qty})` : 'Selecione no + / -'}
               </button>
             </div>
-          </article>
-        `
-        })
-        .join('')
-    : '<p class="empty-msg">Nenhum produto encontrado com esse filtro.</p>'
+          </article>`
+}
+
+function orderedCategoryKeys(byCat: Map<string, Product[]>): string[] {
+  const order: string[] = []
+  const seen = new Set<string>()
+  for (const c of CATEGORY_VALUES) {
+    if (byCat.has(c)) {
+      order.push(c)
+      seen.add(c)
+    }
+  }
+  for (const k of byCat.keys()) {
+    if (!seen.has(k)) order.push(k)
+  }
+  return order
+}
+
+function catalogCardsHtml() {
+  const filtered = getFiltered()
+  if (!filtered.length) {
+    return '<p class="empty-msg">Nenhuma peça encontrada com esse filtro — ou o catálogo ainda está vazio.</p>'
+  }
+
+  const byCat = new Map<string, Product[]>()
+  for (const p of filtered) {
+    const k = p.categoria
+    if (!byCat.has(k)) byCat.set(k, [])
+    byCat.get(k)!.push(p)
+  }
+
+  const keys = orderedCategoryKeys(byCat)
+  return keys
+    .map((cat, idx) => {
+      const list = byCat.get(cat) ?? []
+      if (!list.length) return ''
+      const hid = `catalog-cat-${idx}`
+      return `
+      <section class="catalog-category-section" aria-labelledby="${hid}">
+        <h2 class="catalog-category-heading" id="${hid}">${escapeHtml(cat)}</h2>
+        <div class="products-grid">${list.map((p) => catalogProductCardHtml(p)).join('')}</div>
+      </section>`
+    })
+    .join('')
 }
 
 function bindCatalogGridActions() {
-  const grid = document.querySelector('.products-grid')
-  if (!grid) return
+  const wrap = document.querySelector('.catalog-products-wrap')
+  if (!wrap) return
 
-  grid.querySelectorAll<HTMLButtonElement>('[data-action="plus"]').forEach((btn) => {
+  wrap.querySelectorAll<HTMLButtonElement>('[data-action="plus"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.id!
       updateQty(id, (appState.cart[id] ?? 0) + 1)
     })
   })
 
-  grid.querySelectorAll<HTMLButtonElement>('[data-action="minus"]').forEach((btn) => {
+  wrap.querySelectorAll<HTMLButtonElement>('[data-action="minus"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.id!
       updateQty(id, (appState.cart[id] ?? 0) - 1)
     })
   })
 
-  grid.querySelectorAll<HTMLButtonElement>('[data-action="open-cart"]').forEach((btn) => {
+  wrap.querySelectorAll<HTMLButtonElement>('[data-action="open-cart"]').forEach((btn) => {
     btn.addEventListener('click', () => setStep('carrinho'))
   })
 
-  grid.querySelectorAll<HTMLButtonElement>('[data-action="open-tech"]').forEach((btn) => {
+  wrap.querySelectorAll<HTMLButtonElement>('[data-action="open-tech"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       appState.fichaTecnicaId = btn.dataset.id ?? null
       render()
@@ -782,9 +1033,9 @@ function bindCatalogGridActions() {
 }
 
 function refreshCatalogGrid() {
-  const grid = document.querySelector('.products-grid') as HTMLDivElement | null
-  if (!grid) return
-  grid.innerHTML = catalogCardsHtml()
+  const wrap = document.querySelector('.catalog-products-wrap') as HTMLDivElement | null
+  if (!wrap) return
+  wrap.innerHTML = catalogCardsHtml()
   bindCatalogGridActions()
 }
 
@@ -802,8 +1053,8 @@ function catalogoScreen() {
       <header class="toolbar card">
         <div class="toolbar-top">
           ${stepIndicator(2)}
-          <p class="eyebrow">Cliente: ${appState.customer.nomeOficina || appState.customer.nomeCompleto}</p>
-          <h1>Catálogo de Produtos</h1>
+          <p class="eyebrow">Cliente: ${escapeHtml(appState.customer.nomeOficina || appState.customer.nomeCompleto)}</p>
+          <h1>Catálogo</h1>
         </div>
         <div class="toolbar-actions">
           <button class="btn" id="back-register">← Voltar para cadastro</button>
@@ -818,15 +1069,9 @@ function catalogoScreen() {
         </div>
       </header>
 
-      <div class="supplier-box card">
-        <p class="eyebrow">Referência de mercado (uso interno)</p>
-        <p class="muted small">
-          Preços, imagens e especificações técnicas são consolidados internamente neste app.
-          O cliente permanece 100% na navegação da loja, sem redirecionamento para fornecedores.
-        </p>
-      </div>
+      ${storeAboutCardHtml()}
 
-      <div class="products-grid">${cardsHtml}</div>
+      <div class="catalog-products-wrap">${cardsHtml}</div>
     </section>
   `
 }
@@ -837,20 +1082,33 @@ function cartScreen() {
     .map(
       (item) => `
       <tr>
-        <td>
-          <strong>${item.product.nome}</strong><br/>
-          <small class="muted">${item.product.marca}</small>
+        <td data-label="Produto">
+          <div class="cart-item-product">
+            <div class="cart-item-thumb-wrap">
+              <img
+                class="cart-item-thumb"
+                src="${escapeAttr(productImageUrl(item.product.imagem))}"
+                alt=""
+                loading="lazy"
+                onerror="this.src='https://placehold.co/96x96/e8f0fe/1a3a6b?text=Foto'"
+              />
+            </div>
+            <div class="cart-item-text">
+              <strong>${escapeHtml(item.product.nome)}</strong><br/>
+              <small class="muted">${escapeHtml(item.product.marca)}</small>
+            </div>
+          </div>
         </td>
-        <td>
+        <td data-label="Quantidade">
           <div class="qty-wrap inline">
             <button class="qty-btn" data-action="minus" data-id="${item.product.id}" aria-label="Diminuir">−</button>
             <span class="qty-value">${item.qty}</span>
             <button class="qty-btn" data-action="plus" data-id="${item.product.id}" aria-label="Aumentar">+</button>
           </div>
         </td>
-        <td>${currency.format(item.product.preco)}</td>
-        <td><strong>${currency.format(item.subtotal)}</strong></td>
-        <td>
+        <td data-label="Unitário">${currency.format(item.product.preco)}</td>
+        <td data-label="Subtotal"><strong>${currency.format(item.subtotal)}</strong></td>
+        <td data-label="Ações">
           <button class="btn tiny danger" data-action="remove" data-id="${item.product.id}" aria-label="Remover item">✕</button>
         </td>
       </tr>
@@ -872,8 +1130,8 @@ function cartScreen() {
                <button class="btn primary" id="back-catalog">Voltar ao catálogo</button>
              </div>`
           : `
-            <div class="table-wrap">
-              <table>
+            <div class="table-wrap cart-table-wrap">
+              <table class="cart-table">
                 <thead>
                   <tr>
                     <th>Produto</th><th>Qtd.</th><th>Unit.</th><th>Subtotal</th><th></th>
@@ -899,6 +1157,36 @@ function cartScreen() {
 }
 
 function checkoutScreen() {
+  const deliveryRadios = checkoutOptions.deliveryOptions
+    .map(
+      (o) => `
+          <label class="radio-card ${appState.deliveryMode === o.id ? 'selected' : ''}">
+            <input type="radio" name="deliveryMode" value="${escapeAttr(o.id)}"
+              ${appState.deliveryMode === o.id ? 'checked' : ''} />
+            <div>
+              <strong>${escapeHtml(o.title)}</strong>
+              <p class="muted">${escapeHtml(deliveryModeSubtitle(o))}</p>
+            </div>
+          </label>`
+    )
+    .join('')
+
+  const paymentRadios = checkoutOptions.paymentOptions
+    .map(
+      (o) => `
+          <label class="radio-card ${appState.paymentMethod === o.id ? 'selected' : ''}">
+            <input type="radio" name="paymentMethod" value="${escapeAttr(o.id)}"
+              ${appState.paymentMethod === o.id ? 'checked' : ''} />
+            <div>
+              <strong>${escapeHtml(o.title)}</strong>
+              <p class="muted">${escapeHtml(o.detail)}</p>
+            </div>
+          </label>`
+    )
+    .join('')
+
+  const showCashBox = getPaymentOption(appState.paymentMethod)?.asksCashChange === true
+
   return `
     <section class="screen card fade-in">
       ${stepIndicator(4)}
@@ -910,59 +1198,13 @@ function checkoutScreen() {
       <form id="checkout-form" class="checkout-form">
         <fieldset>
           <legend>Modalidade de recebimento</legend>
-          <label class="radio-card ${appState.deliveryMode === 'entrega' ? 'selected' : ''}">
-            <input type="radio" name="deliveryMode" value="entrega"
-              ${appState.deliveryMode === 'entrega' ? 'checked' : ''} />
-            <div>
-              <strong>Entrega no endereço</strong>
-              <p class="muted">${appState.customer.enderecoCompleto || '—'}</p>
-            </div>
-          </label>
-          <label class="radio-card ${appState.deliveryMode === 'retirada' ? 'selected' : ''}">
-            <input type="radio" name="deliveryMode" value="retirada"
-              ${appState.deliveryMode === 'retirada' ? 'checked' : ''} />
-            <div>
-              <strong>Retirada na loja</strong>
-              <p class="muted">Retire pessoalmente no balcão</p>
-            </div>
-          </label>
+          ${deliveryRadios}
         </fieldset>
 
         <fieldset>
           <legend>Forma de pagamento</legend>
-          <label class="radio-card ${appState.paymentMethod === 'pix' ? 'selected' : ''}">
-            <input type="radio" name="paymentMethod" value="pix"
-              ${appState.paymentMethod === 'pix' ? 'checked' : ''} />
-            <div>
-              <strong>Pix</strong>
-              <p class="muted pix-key">Chave CNPJ: ${PIX_CNPJ}</p>
-            </div>
-          </label>
-          <label class="radio-card ${appState.paymentMethod === 'cartao_link' ? 'selected' : ''}">
-            <input type="radio" name="paymentMethod" value="cartao_link"
-              ${appState.paymentMethod === 'cartao_link' ? 'checked' : ''} />
-            <div>
-              <strong>Cartão de crédito</strong>
-              <p class="muted">Solicitar envio de link de pagamento pelo WhatsApp</p>
-            </div>
-          </label>
-          <label class="radio-card ${appState.paymentMethod === 'maquineta' ? 'selected' : ''}">
-            <input type="radio" name="paymentMethod" value="maquineta"
-              ${appState.paymentMethod === 'maquineta' ? 'checked' : ''} />
-            <div>
-              <strong>Cartão na maquineta</strong>
-              <p class="muted">Solicitar maquineta para pagamento presencial</p>
-            </div>
-          </label>
-          <label class="radio-card ${appState.paymentMethod === 'dinheiro' ? 'selected' : ''}">
-            <input type="radio" name="paymentMethod" value="dinheiro"
-              ${appState.paymentMethod === 'dinheiro' ? 'checked' : ''} />
-            <div>
-              <strong>Dinheiro</strong>
-              <p class="muted">Pagamento em espécie na entrega ou retirada</p>
-            </div>
-          </label>
-          <div class="cash-change-box ${appState.paymentMethod === 'dinheiro' ? '' : 'hidden'}" id="cash-change-box">
+          ${paymentRadios}
+          <div class="cash-change-box ${showCashBox ? '' : 'hidden'}" id="cash-change-box">
             <label>
               Troco para quanto? (opcional)
               <input
@@ -980,7 +1222,12 @@ function checkoutScreen() {
 
         <div class="summary-box">
           <p><span class="muted">Cliente:</span> <strong>${appState.customer.nomeCompleto}</strong></p>
-          <p><span class="muted">Oficina:</span> <strong>${appState.customer.nomeOficina}</strong></p>
+          ${
+            normalizeCpfDigits(appState.customer.cpf).length === 11
+              ? `<p><span class="muted">CPF:</span> <strong>${escapeHtml(formatCpfDisplay(appState.customer.cpf))}</strong></p>`
+              : ''
+          }
+          <p><span class="muted">Referência / apelido:</span> <strong>${escapeHtml(appState.customer.nomeOficina)}</strong></p>
           <p><span class="muted">Itens:</span> <strong>${cartCount()} itens</strong></p>
           <p><span class="muted">Pagamento:</span> <strong>${paymentMethodLabel(appState.paymentMethod)}</strong></p>
           <p><span class="muted">Total:</span> <strong class="total-highlight">${currency.format(cartTotal())}</strong></p>
@@ -996,7 +1243,7 @@ function checkoutScreen() {
 }
 
 function successScreen() {
-  const mode = appState.deliveryMode === 'entrega' ? 'Entrega no endereço' : 'Retirada na loja'
+  const mode = getDeliveryOption(appState.deliveryMode)?.title ?? '—'
   const payment = paymentMethodLabel(appState.paymentMethod)
   const paymentDetail = paymentMethodDetail(appState.paymentMethod)
   const waUrl = buildWhatsAppUrl()
@@ -1035,9 +1282,20 @@ function adminScreen() {
     .map(
       (p, i) => `
       <tr>
-        <td data-label="Nome">${p.nome}</td>
-        <td data-label="Marca">${p.marca}</td>
-        <td data-label="Categoria">${p.categoria}</td>
+        <td data-label="Foto" class="admin-product-thumb-cell">
+          <div class="admin-product-thumb-wrap">
+            <img
+              class="admin-product-thumb"
+              src="${escapeAttr(productImageUrl(p.imagem))}"
+              alt=""
+              loading="lazy"
+              onerror="this.src='https://placehold.co/96x96/e8f0fe/1a3a6b?text=Foto'"
+            />
+          </div>
+        </td>
+        <td data-label="Nome">${escapeHtml(p.nome)}</td>
+        <td data-label="Marca">${escapeHtml(p.marca)}</td>
+        <td data-label="Categoria">${escapeHtml(p.categoria)}</td>
         <td data-label="Preço">
           <input
             class="price-edit-input"
@@ -1047,15 +1305,12 @@ function adminScreen() {
             value="${p.preco.toFixed(2)}"
             data-action="admin-price"
             data-index="${i}"
-            aria-label="Preço de ${p.nome}"
+            aria-label="Preço de ${escapeAttr(p.nome)}"
           />
         </td>
-        <td data-label="Ficha">
-          <button class="btn tiny" data-action="open-tech" data-id="${p.id}" aria-label="Ver ficha técnica de ${p.nome}">Ver</button>
-        </td>
         <td data-label="Ações">
-          <button class="btn tiny" data-action="admin-save-price" data-index="${i}" aria-label="Salvar novo preço de ${p.nome}">Salvar</button>
-          <button class="btn tiny danger" data-action="admin-delete" data-index="${i}" aria-label="Excluir ${p.nome}">✕</button>
+          <button class="btn tiny" data-action="admin-save-price" data-index="${i}" aria-label="Salvar novo preço de ${escapeAttr(p.nome)}">Salvar</button>
+          <button class="btn tiny danger" data-action="admin-delete" data-index="${i}" aria-label="Excluir ${escapeAttr(p.nome)}">✕</button>
         </td>
       </tr>
     `
@@ -1066,48 +1321,170 @@ function adminScreen() {
     .map((c) => `<option value="${c}">${c}</option>`)
     .join('')
 
+  const b = storeBranding
+  const logoPreviewSrc = escapeAttr(
+    brandingPendingLogoDataUrl || b.logoUrl || logoLugarDasTintas
+  )
+
+  const adminDeliveryRows = checkoutOptions.deliveryOptions
+    .map(
+      (o) => `
+      <tr data-co-delivery="${escapeAttr(o.id)}">
+        <td><input type="text" class="co-inp-delivery-title" value="${escapeAttr(o.title)}" /></td>
+        <td><input type="text" class="co-inp-delivery-desc" value="${escapeAttr(o.description)}" placeholder="Texto se não marcar end. cliente" /></td>
+        <td><input type="checkbox" class="co-inp-delivery-addr" ${o.showCustomerAddress ? 'checked' : ''} title="Mostrar endereço do cliente na finalização" /></td>
+        <td><button type="button" class="btn tiny danger" data-action="co-remove-delivery" data-id="${escapeAttr(o.id)}">Excluir</button></td>
+      </tr>`
+    )
+    .join('')
+
+  const adminPaymentRows = checkoutOptions.paymentOptions
+    .map(
+      (o) => `
+      <tr data-co-payment="${escapeAttr(o.id)}">
+        <td><input type="text" class="co-inp-payment-title" value="${escapeAttr(o.title)}" /></td>
+        <td><input type="text" class="co-inp-payment-detail" value="${escapeAttr(o.detail)}" /></td>
+        <td><input type="checkbox" class="co-inp-payment-cash" ${o.asksCashChange ? 'checked' : ''} title="Exibir campo de troco opcional" /></td>
+        <td><button type="button" class="btn tiny danger" data-action="co-remove-payment" data-id="${escapeAttr(o.id)}">Excluir</button></td>
+      </tr>`
+    )
+    .join('')
+
   return `
     <section class="screen fade-in">
       <div class="card">
         <p class="eyebrow">Painel administrativo</p>
         <h1>Gerenciar Produtos</h1>
-        <p class="lead">Adicione, remova ou edite produtos do catálogo. As alterações são salvas no navegador.</p>
+        <p class="lead">Cadastre peças da sua loja de roupas. Tudo fica salvo neste navegador até você publicar com servidor.</p>
+      </div>
+
+      <div class="card">
+        <h2>Identidade da loja</h2>
+        <p class="muted small" style="margin-bottom: 10px;">
+          Defina o nome da empresa, o slogan e a logo. Envie uma imagem pela <strong>galeria do celular</strong> ou por <strong>arquivo no computador</strong>.
+        </p>
+        <form id="branding-form" class="form-grid" novalidate>
+          <label>
+            Nome da empresa *
+            <input required name="nomeEmpresa" value="${escapeAttr(b.nomeEmpresa)}" placeholder="Ex.: Moda Silva" maxlength="120" />
+          </label>
+          <label>
+            Slogan / linha auxiliar
+            <input name="tagline" value="${escapeAttr(b.tagline)}" placeholder="Ex.: MODA FEMININA" maxlength="120" />
+          </label>
+          <div class="full branding-logo-block">
+            <span class="branding-logo-label">Logo da loja</span>
+            <div class="admin-photo-actions" style="margin-top: 8px;">
+              <button type="button" class="btn" id="branding-pick-logo">📁 Escolher imagem (galeria ou computador)</button>
+              <button type="button" class="btn tiny" id="branding-clear-logo">Usar logo padrão do sistema</button>
+            </div>
+            <input type="file" id="branding-logo-file" accept="image/*" class="visually-hidden" tabindex="-1" aria-hidden="true" />
+            <div class="branding-logo-preview-wrap">
+              <img id="branding-logo-preview" class="branding-logo-preview" alt="Pré-visualização da logo" src="${logoPreviewSrc}" />
+            </div>
+            ${
+              brandingPendingLogoDataUrl
+                ? '<p class="muted small" id="branding-logo-hint">Clique em <strong>Salvar identidade</strong> para aplicar a nova imagem.</p>'
+                : ''
+            }
+          </div>
+          <p class="muted small full" style="grid-column: 1 / -1; margin: 4px 0 0;">
+            Campos abaixo são <strong>opcionais</strong> e aparecem para o cliente em “Sobre a loja” (cadastro e catálogo).
+          </p>
+          <label class="full">
+            Descrição da empresa (opcional)
+            <textarea name="descricaoEmpresa" rows="3" maxlength="2000" placeholder="Conte um pouco da história ou do estilo da loja…">${escapeHtml(b.descricaoEmpresa)}</textarea>
+          </label>
+          <label>
+            Ramo da empresa (opcional)
+            <input type="text" name="ramoEmpresa" value="${escapeAttr(b.ramoEmpresa)}" placeholder="Ex.: venda de roupas femininas" maxlength="200" />
+          </label>
+          <label>
+            Telefone da empresa (opcional)
+            <input type="tel" name="telefoneEmpresa" value="${escapeAttr(b.telefoneEmpresa)}" placeholder="Ex.: (00) 00000-0000" maxlength="30" autocomplete="tel" />
+          </label>
+          <label class="full">
+            Endereço da empresa (opcional)
+            <input type="text" name="enderecoEmpresa" value="${escapeAttr(b.enderecoEmpresa)}" placeholder="Rua, número, bairro, cidade – CEP" maxlength="300" autocomplete="street-address" />
+          </label>
+          <div class="full form-actions" style="flex-wrap: wrap; gap: 10px;">
+            <button type="submit" class="btn primary">Salvar identidade</button>
+            <button type="button" class="btn" id="branding-reset">Restaurar padrão (Lugar das Tintas)</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Pagamento e Entrega</h2>
+        <p class="muted small" style="margin-bottom: 12px;">
+          Opções exibidas na finalização do pedido. Inclua, edite ou exclua linhas; use <strong>Salvar</strong> para aplicar.
+          Em entrega, <strong>End. cliente</strong> mostra o endereço cadastrado. Em pagamento, <strong>Troco</strong> ativa o campo de troco (ex.: dinheiro).
+        </p>
+        <h3 class="checkout-admin-subh">Modalidades de entrega / retirada</h3>
+        <div class="table-wrap">
+          <table class="admin-table admin-checkout-table">
+            <thead><tr><th>Título</th><th>Descrição auxiliar</th><th>End. cliente</th><th></th></tr></thead>
+            <tbody id="co-delivery-tbody">${adminDeliveryRows}</tbody>
+          </table>
+        </div>
+        <button type="button" class="btn" id="co-add-delivery" style="margin-bottom: 18px;">+ Adicionar modalidade</button>
+
+        <h3 class="checkout-admin-subh">Formas de pagamento</h3>
+        <div class="table-wrap">
+          <table class="admin-table admin-checkout-table">
+            <thead><tr><th>Título</th><th>Detalhe ao cliente</th><th>Troco</th><th></th></tr></thead>
+            <tbody id="co-payment-tbody">${adminPaymentRows}</tbody>
+          </table>
+        </div>
+        <button type="button" class="btn" id="co-add-payment" style="margin-bottom: 18px;">+ Adicionar forma de pagamento</button>
+
+        <div class="actions" style="flex-wrap: wrap; gap: 10px;">
+          <button type="button" class="btn primary" id="co-save">Salvar Pagamento e Entrega</button>
+          <button type="button" class="btn" id="co-reset-default">Restaurar opções padrão</button>
+        </div>
       </div>
 
       <div class="card">
         <h2>Adicionar produto</h2>
         <form id="admin-form" class="form-grid" novalidate>
           <label>
-            Nome do produto *
-            <input required name="nome" placeholder="Nome do produto" />
+            Nome da peça *
+            <input required name="nome" placeholder="Ex.: Camiseta básica algodão" />
           </label>
           <label>
-            Marca *
-            <input required name="marca" placeholder="Ex: Maza, Sherwin-Williams" />
+            Marca ou coleção *
+            <input required name="marca" placeholder="Ex.: própria, marca parceira" />
           </label>
           <label>
             Categoria *
             <select required name="categoria">${optionsHtml}</select>
           </label>
           <label>
-            Subcategoria
-            <input name="subcategoria" placeholder="Ex: de agua, ferro, a seco" />
+            Detalhe (tamanho, cor…)
+            <input name="subcategoria" placeholder="Ex.: M · Branco" />
           </label>
           <label>
             Preço (R$) *
             <input required type="number" min="0" step="0.01" name="preco" placeholder="0,00" />
           </label>
-          <label>
-            URL da imagem
-            <input type="url" name="imagem" placeholder="https://…" />
-          </label>
+          <div class="full admin-photo-block">
+            <p class="muted small" style="margin-bottom: 8px;">Foto da peça — use a galeria, arquivos do computador ou a câmera do celular.</p>
+            <div class="admin-photo-actions">
+              <button type="button" class="btn" id="admin-pick-gallery">📁 Galeria ou arquivo</button>
+              <button type="button" class="btn" id="admin-pick-camera">📷 Tirar foto</button>
+              <button type="button" class="btn tiny danger" id="admin-clear-photo">Remover foto</button>
+            </div>
+            <input type="file" id="admin-product-file-gallery" accept="image/*" class="visually-hidden" tabindex="-1" aria-hidden="true" />
+            <input type="file" id="admin-product-file-camera" accept="image/*" capture="environment" class="visually-hidden" tabindex="-1" aria-hidden="true" />
+            <div class="admin-photo-preview-wrap">
+              <img id="admin-product-preview" class="admin-product-preview" alt="Pré-visualização"
+                ${adminPendingImageDataUrl ? `src="${escapeAttr(adminPendingImageDataUrl)}"` : 'hidden'}
+                style="max-height: 200px; border-radius: 12px; object-fit: contain; ${adminPendingImageDataUrl ? '' : 'display: none;'}" />
+            </div>
+          </div>
           <label class="full">
-            Descrição / modo de uso *
-            <input required name="uso" placeholder="Como usar este produto" />
-          </label>
-          <label class="full">
-            Fonte técnica (uso interno)
-            <input type="url" name="fonte" placeholder="https://…" />
+            Descrição *
+            <input required name="uso" placeholder="Tecido, modelagem, cuidados na lavagem…" />
           </label>
           <div class="full form-actions">
             <button type="submit" class="btn primary">Adicionar ao catálogo</button>
@@ -1117,9 +1494,12 @@ function adminScreen() {
 
       <div class="card">
         <h2>Produtos cadastrados (${products.length})</h2>
+        <p class="muted small" style="margin: 6px 0 14px;">
+          Use a coluna <strong>Foto</strong> para conferir se a imagem corresponde à peça antes de alterar preço ou excluir.
+        </p>
         <div class="table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Nome</th><th>Marca</th><th>Categoria</th><th>Preço</th><th>Ficha</th><th>Ações</th></tr></thead>
+            <thead><tr><th>Foto</th><th>Nome</th><th>Marca</th><th>Categoria</th><th>Preço</th><th>Ações</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1128,7 +1508,7 @@ function adminScreen() {
       <div class="card">
         <div class="actions">
           <button class="btn" id="back-from-admin">← Voltar ao catálogo</button>
-          <button class="btn danger" id="reset-products">Restaurar catálogo padrão</button>
+          <button class="btn danger" id="reset-products">Esvaziar catálogo</button>
         </div>
       </div>
     </section>
@@ -1153,20 +1533,17 @@ function template() {
     : null
   const fichaModal = fichaProduto
     ? `
-      <div class="ficha-overlay" id="ficha-overlay" role="dialog" aria-modal="true" aria-label="Ficha técnica do produto">
+      <div class="ficha-overlay" id="ficha-overlay" role="dialog" aria-modal="true" aria-label="Detalhes da peça">
         <div class="ficha-modal" id="ficha-modal">
           <div class="ficha-header">
-            <h3>Ficha técnica - ${fichaProduto.nome}</h3>
-            <button class="btn" id="close-ficha" aria-label="Fechar ficha técnica">✕</button>
+            <h3>${escapeHtml(fichaProduto.nome)}</h3>
+            <button class="btn" id="close-ficha" aria-label="Fechar">✕</button>
           </div>
           <div class="ficha-body">
-            <p><strong>Marca:</strong> ${fichaProduto.marca}</p>
-            <p><strong>Categoria:</strong> ${fichaProduto.categoria}${fichaProduto.subcategoria ? ` · ${fichaProduto.subcategoria}` : ''}</p>
-            <p><strong>Preço de mercado:</strong> ${currency.format(fichaProduto.preco)}</p>
-            <p><strong>Aplicação técnica:</strong> ${fichaProduto.uso}</p>
-            <p class="muted small">
-              Dados técnicos consolidados internamente a partir de referências de mercado.
-            </p>
+            <p><strong>Marca:</strong> ${escapeHtml(fichaProduto.marca)}</p>
+            <p><strong>Categoria:</strong> ${escapeHtml(fichaProduto.categoria)}${fichaProduto.subcategoria ? ` · ${escapeHtml(fichaProduto.subcategoria)}` : ''}</p>
+            <p><strong>Preço:</strong> ${currency.format(fichaProduto.preco)}</p>
+            <p><strong>Descrição:</strong> ${escapeHtml(fichaProduto.uso)}</p>
           </div>
         </div>
       </div>
@@ -1224,7 +1601,7 @@ function bindEvents() {
     adminSecretBound = true
   }
 
-  // Ficha técnica dentro do app.
+  // Detalhes da peça (modal).
   document.querySelectorAll<HTMLButtonElement>('[data-action="open-tech"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       appState.fichaTecnicaId = btn.dataset.id ?? null
@@ -1266,6 +1643,7 @@ function bindEvents() {
   })
   // Cadastro
   const cadastroForm = document.getElementById('cadastro-form') as HTMLFormElement | null
+  const cpfInput = cadastroForm?.querySelector<HTMLInputElement>('input[name="cpf"]')
   const nameInput = cadastroForm?.querySelector<HTMLInputElement>('input[name="nomeCompleto"]')
   const workshopInput = cadastroForm?.querySelector<HTMLInputElement>('input[name="nomeOficina"]')
   const addressInput = cadastroForm?.querySelector<HTMLInputElement>('input[name="enderecoCompleto"]')
@@ -1273,6 +1651,7 @@ function bindEvents() {
   const whatsappInput = cadastroForm?.querySelector<HTMLInputElement>('input[name="whatsapp"]')
 
   const fillCustomerForm = (customer: Customer) => {
+    if (cpfInput) cpfInput.value = formatCpfDisplay(customer.cpf)
     if (nameInput) nameInput.value = customer.nomeCompleto
     if (workshopInput) workshopInput.value = customer.nomeOficina
     if (addressInput) addressInput.value = customer.enderecoCompleto
@@ -1287,8 +1666,29 @@ function bindEvents() {
     fillCustomerForm(found)
   }
 
+  const tryAutofillByCpf = () => {
+    if (!cpfInput) return
+    const d = normalizeCpfDigits(cpfInput.value)
+    if (d.length !== 11 || !isValidCpf(d)) return
+    const found = findCustomerProfileByCpf(d)
+    if (!found) return
+    fillCustomerForm(found)
+  }
+
   nameInput?.addEventListener('change', tryAutofillByName)
   nameInput?.addEventListener('blur', tryAutofillByName)
+
+  cpfInput?.addEventListener('input', () => {
+    if (!cpfInput) return
+    cpfInput.value = formatCpfDisplay(cpfInput.value)
+    const d = normalizeCpfDigits(cpfInput.value)
+    if (d.length === 11 && isValidCpf(d)) {
+      const found = findCustomerProfileByCpf(d)
+      if (found) fillCustomerForm(found)
+    }
+  })
+  cpfInput?.addEventListener('change', tryAutofillByCpf)
+  cpfInput?.addEventListener('blur', tryAutofillByCpf)
 
   whatsappInput?.addEventListener('input', () => {
     whatsappInput.value = formatWhatsapp(whatsappInput.value)
@@ -1298,6 +1698,17 @@ function bindEvents() {
     e.preventDefault()
     const fd = new FormData(cadastroForm)
     const get = (k: string) => String(fd.get(k) ?? '').trim()
+    const cpfDigits = normalizeCpfDigits(get('cpf'))
+    if (cpfDigits.length !== 11) {
+      alert('Informe o CPF com 11 dígitos.')
+      cpfInput?.focus()
+      return
+    }
+    if (!isValidCpf(cpfDigits)) {
+      alert('CPF inválido. Verifique os números.')
+      cpfInput?.focus()
+      return
+    }
     if (!get('nomeCompleto') || !get('nomeOficina') || !get('enderecoCompleto') || !get('email') || !get('whatsapp')) {
       alert('Preencha todos os campos obrigatórios (*).')
       return
@@ -1308,6 +1719,7 @@ function bindEvents() {
       return
     }
     appState.customer = {
+      cpf: cpfDigits,
       nomeCompleto: get('nomeCompleto'),
       nomeOficina: get('nomeOficina'),
       enderecoCompleto: get('enderecoCompleto'),
@@ -1342,17 +1754,25 @@ function bindEvents() {
     persistState()
   })
 
+  document.querySelectorAll<HTMLInputElement>('input[name="deliveryMode"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      appState.deliveryMode = radio.value
+      persistState()
+    })
+  })
+
   document.querySelectorAll<HTMLInputElement>('input[name="paymentMethod"]').forEach((radio) => {
     radio.addEventListener('change', () => {
-      appState.paymentMethod = (radio.value as PaymentMethod)
+      appState.paymentMethod = radio.value
       const cashBox = document.getElementById('cash-change-box')
-      if (appState.paymentMethod === 'dinheiro') cashBox?.classList.remove('hidden')
+      if (getPaymentOption(radio.value)?.asksCashChange) cashBox?.classList.remove('hidden')
       else {
         cashBox?.classList.add('hidden')
         appState.cashChangeFor = ''
         if (cashChangeInput) cashChangeInput.value = ''
       }
       persistState()
+      render()
     })
   })
 
@@ -1361,10 +1781,11 @@ function bindEvents() {
     e.preventDefault()
     const selected = document.querySelector<HTMLInputElement>('input[name="deliveryMode"]:checked')
     const selectedPayment = document.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')
-    appState.deliveryMode = (selected?.value as DeliveryMode) ?? 'entrega'
-    appState.paymentMethod = (selectedPayment?.value as PaymentMethod) ?? 'pix'
+    appState.deliveryMode = clampDeliveryModeId(selected?.value)
+    appState.paymentMethod = clampPaymentMethodId(selectedPayment?.value)
 
-    if (appState.paymentMethod === 'dinheiro' && appState.cashChangeFor) {
+    const payOpt = getPaymentOption(appState.paymentMethod)
+    if (payOpt?.asksCashChange && appState.cashChangeFor) {
       const changeValue = Number(appState.cashChangeFor)
       if (Number.isNaN(changeValue) || changeValue < cartTotal()) {
         alert(`O valor de troco deve ser maior ou igual ao total do pedido (${currency.format(cartTotal())}).`)
@@ -1414,6 +1835,212 @@ function bindEvents() {
     btn.addEventListener('click', () => updateQty(btn.dataset.id!, 0))
   })
 
+  // Admin – identidade da loja
+  const brandingForm = document.getElementById('branding-form') as HTMLFormElement | null
+  brandingForm?.addEventListener('submit', (e) => {
+    e.preventDefault()
+    const fd = new FormData(brandingForm)
+    const nomeEmpresa = String(fd.get('nomeEmpresa') ?? '').trim()
+    if (!nomeEmpresa) {
+      alert('Informe o nome da empresa.')
+      return
+    }
+    const tagline = String(fd.get('tagline') ?? '').trim()
+    let logoUrl: string
+    if (brandingPendingLogoDataUrl) {
+      logoUrl = brandingPendingLogoDataUrl
+      brandingPendingLogoDataUrl = null
+    } else {
+      logoUrl = storeBranding.logoUrl
+    }
+    storeBranding = {
+      nomeEmpresa,
+      tagline,
+      logoUrl,
+      descricaoEmpresa: String(fd.get('descricaoEmpresa') ?? '').trim(),
+      ramoEmpresa: String(fd.get('ramoEmpresa') ?? '').trim(),
+      enderecoEmpresa: String(fd.get('enderecoEmpresa') ?? '').trim(),
+      telefoneEmpresa: String(fd.get('telefoneEmpresa') ?? '').trim()
+    }
+    saveBranding(storeBranding)
+    applyDocumentBranding()
+    render()
+  })
+
+  const brandingLogoFile = document.getElementById('branding-logo-file') as HTMLInputElement | null
+  document.getElementById('branding-pick-logo')?.addEventListener('click', () => brandingLogoFile?.click())
+  brandingLogoFile?.addEventListener('change', () => {
+    const file = brandingLogoFile.files?.[0]
+    if (!file || !file.type.startsWith('image/')) {
+      if (file) alert('Selecione um arquivo de imagem.')
+      brandingLogoFile.value = ''
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return
+      if (reader.result.length > 6_500_000) {
+        alert('Esta imagem é grande demais. Escolha um arquivo menor.')
+        return
+      }
+      brandingPendingLogoDataUrl = reader.result
+      brandingLogoFile.value = ''
+      render()
+    }
+    reader.readAsDataURL(file)
+  })
+
+  document.getElementById('branding-clear-logo')?.addEventListener('click', () => {
+    brandingPendingLogoDataUrl = null
+    storeBranding = { ...storeBranding, logoUrl: '' }
+    saveBranding(storeBranding)
+    applyDocumentBranding()
+    render()
+  })
+
+  document.getElementById('branding-reset')?.addEventListener('click', () => {
+    if (!confirm('Restaurar nome, slogan e logo padrão do sistema?')) return
+    brandingPendingLogoDataUrl = null
+    storeBranding = { ...DEFAULT_BRANDING }
+    saveBranding(storeBranding)
+    applyDocumentBranding()
+    render()
+  })
+
+  // Admin – Pagamento e Entrega
+  document.getElementById('co-save')?.addEventListener('click', () => {
+    const next = readCheckoutOptionsFromAdminDom()
+    if (!next) return
+    checkoutOptions = next
+    saveCheckoutOptions(checkoutOptions)
+    appState.deliveryMode = clampDeliveryModeId(appState.deliveryMode)
+    appState.paymentMethod = clampPaymentMethodId(appState.paymentMethod)
+    persistState()
+    render()
+  })
+
+  document.getElementById('co-reset-default')?.addEventListener('click', () => {
+    if (!confirm('Restaurar as opções de pagamento e entrega padrão?')) return
+    checkoutOptions = JSON.parse(JSON.stringify(DEFAULT_CHECKOUT_OPTIONS)) as CheckoutOptions
+    saveCheckoutOptions(checkoutOptions)
+    appState.deliveryMode = clampDeliveryModeId(appState.deliveryMode)
+    appState.paymentMethod = clampPaymentMethodId(appState.paymentMethod)
+    persistState()
+    render()
+  })
+
+  document.getElementById('co-add-delivery')?.addEventListener('click', () => {
+    checkoutOptions.deliveryOptions.push(
+      normalizeDeliveryOption({
+        id: `del-${Date.now()}`,
+        title: 'Nova modalidade',
+        description: '',
+        showCustomerAddress: false
+      })
+    )
+    saveCheckoutOptions(checkoutOptions)
+    render()
+  })
+
+  document.getElementById('co-add-payment')?.addEventListener('click', () => {
+    checkoutOptions.paymentOptions.push(
+      normalizePaymentOption({
+        id: `pay-${Date.now()}`,
+        title: 'Nova forma de pagamento',
+        detail: '',
+        asksCashChange: false
+      })
+    )
+    saveCheckoutOptions(checkoutOptions)
+    render()
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-action="co-remove-delivery"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id
+      if (!id) return
+      if (checkoutOptions.deliveryOptions.length <= 1) {
+        alert('Mantenha pelo menos uma modalidade de entrega.')
+        return
+      }
+      if (!confirm('Excluir esta modalidade?')) return
+      checkoutOptions.deliveryOptions = checkoutOptions.deliveryOptions.filter((o) => o.id !== id)
+      saveCheckoutOptions(checkoutOptions)
+      appState.deliveryMode = clampDeliveryModeId(appState.deliveryMode)
+      persistState()
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-action="co-remove-payment"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id
+      if (!id) return
+      if (checkoutOptions.paymentOptions.length <= 1) {
+        alert('Mantenha pelo menos uma forma de pagamento.')
+        return
+      }
+      if (!confirm('Excluir esta forma de pagamento?')) return
+      checkoutOptions.paymentOptions = checkoutOptions.paymentOptions.filter((o) => o.id !== id)
+      saveCheckoutOptions(checkoutOptions)
+      appState.paymentMethod = clampPaymentMethodId(appState.paymentMethod)
+      persistState()
+      render()
+    })
+  })
+
+  // Admin – fotos do produto (galeria, arquivo ou câmera)
+  const adminFileGallery = document.getElementById('admin-product-file-gallery') as HTMLInputElement | null
+  const adminFileCamera = document.getElementById('admin-product-file-camera') as HTMLInputElement | null
+  const adminPickGallery = document.getElementById('admin-pick-gallery')
+  const adminPickCamera = document.getElementById('admin-pick-camera')
+  const adminClearPhoto = document.getElementById('admin-clear-photo')
+  const adminPreview = document.getElementById('admin-product-preview') as HTMLImageElement | null
+
+  const applyAdminPreview = (dataUrl: string) => {
+    if (dataUrl.length > 6_500_000) {
+      alert('Esta imagem é grande demais para guardar no navegador. Reduza o tamanho do arquivo.')
+      return
+    }
+    adminPendingImageDataUrl = dataUrl
+    if (adminPreview) {
+      adminPreview.removeAttribute('hidden')
+      adminPreview.src = dataUrl
+      adminPreview.style.display = 'block'
+    }
+  }
+
+  const readAdminImageFile = (file: File | undefined) => {
+    if (!file || !file.type.startsWith('image/')) {
+      alert('Selecione um arquivo de imagem.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') applyAdminPreview(reader.result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  adminPickGallery?.addEventListener('click', () => adminFileGallery?.click())
+  adminPickCamera?.addEventListener('click', () => adminFileCamera?.click())
+  adminFileGallery?.addEventListener('change', () => {
+    readAdminImageFile(adminFileGallery.files?.[0])
+    adminFileGallery.value = ''
+  })
+  adminFileCamera?.addEventListener('change', () => {
+    readAdminImageFile(adminFileCamera.files?.[0])
+    adminFileCamera.value = ''
+  })
+  adminClearPhoto?.addEventListener('click', () => {
+    adminPendingImageDataUrl = null
+    if (adminPreview) {
+      adminPreview.removeAttribute('src')
+      adminPreview.setAttribute('hidden', '')
+      adminPreview.style.display = 'none'
+    }
+  })
+
   // Admin – adicionar produto
   const adminForm = document.getElementById('admin-form') as HTMLFormElement | null
   adminForm?.addEventListener('submit', (e) => {
@@ -1429,6 +2056,9 @@ function bindEvents() {
       alert('Preencha os campos obrigatórios do produto.')
       return
     }
+    const imagem =
+      adminPendingImageDataUrl ||
+      'https://placehold.co/400x220/e8f0fe/1a3a6b?text=Foto'
     const newProduct: Product = {
       id: `custom-${Date.now()}`,
       nome,
@@ -1436,13 +2066,13 @@ function bindEvents() {
       categoria,
       subcategoria: get('subcategoria') || undefined,
       preco,
-      imagem: get('imagem') || 'https://placehold.co/400x220/e8f0fe/1a3a6b?text=Produto',
+      imagem,
       uso,
-      fonte: get('fonte') || '#',
       custom: true
     }
     products = [...products, newProduct]
     saveProducts(products)
+    adminPendingImageDataUrl = null
     adminForm.reset()
     render()
   })
@@ -1476,10 +2106,10 @@ function bindEvents() {
     })
   })
 
-  // Admin – restaurar padrão
+  // Admin – esvaziar catálogo
   document.getElementById('reset-products')?.addEventListener('click', () => {
-    if (confirm('Restaurar catálogo padrão? Produtos personalizados serão perdidos.')) {
-      products = [...defaultProducts]
+    if (confirm('Remover todos os produtos cadastrados? Esta ação não pode ser desfeita.')) {
+      products = []
       saveProducts(products)
       render()
     }
