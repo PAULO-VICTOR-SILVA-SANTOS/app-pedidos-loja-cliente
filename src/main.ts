@@ -1,6 +1,7 @@
 import './style.css'
 import * as storeApi from './api/storeApi'
 import logoLugarDasTintas from '../images/LOGO CASTRO MULTIMARCAS.png'
+import cadastroLojaBg from '../images/cadastro-loja-castro.png'
 import camisa1Img from '../images/camisa 1.jpg'
 import camisa2Img from '../images/camisa 2.jpg'
 import camisa3Img from '../images/camisa 3.jpg'
@@ -207,52 +208,230 @@ type PaymentOptionConfig = {
 }
 
 type CheckoutOptions = {
+  /** Oferecer retirada na loja ao cliente. */
+  pickupEnabled: boolean
+  /** Oferecer entrega ao cliente. */
+  deliveryEnabled: boolean
+  /** Se true, o valor em `deliveryFee` entra no total quando a modalidade ativa é “entrega”. */
+  deliveryFeeEnabled: boolean
+  /** Valor da taxa (editável no admin; só soma ao pedido com “entrega” + opção de taxa ativas). */
+  deliveryFee: number
   deliveryOptions: DeliveryOptionConfig[]
+  paymentCashEnabled: boolean
+  paymentCardEnabled: boolean
+  paymentPixEnabled: boolean
+  /** Chave PIX da loja (copiável pelo cliente no checkout). */
+  pixKey: string
+  /** Dígitos do WhatsApp (wa.me) que recebe o pedido; vazio = sem envio por WhatsApp até cadastrar no admin. */
+  pedidoWhatsapp: string
   paymentOptions: PaymentOptionConfig[]
 }
 
-const DEFAULT_CHECKOUT_OPTIONS: CheckoutOptions = {
-  deliveryOptions: [
-    {
-      id: 'entrega',
-      title: 'Entrega no endereço',
-      description: '',
-      showCustomerAddress: true
-    },
-    {
-      id: 'retirada',
-      title: 'Retirada na loja',
-      description: 'Retire pessoalmente no balcão.',
-      showCustomerAddress: false
-    }
-  ],
-  paymentOptions: [
-    {
-      id: 'pix',
-      title: 'Pix',
-      detail: 'Chave Pix (CNPJ): 13232181000123',
-      asksCashChange: false
-    },
-    {
-      id: 'cartao_link',
-      title: 'Cartão de crédito',
-      detail: 'Solicitar envio do link de pagamento pelo WhatsApp.',
-      asksCashChange: false
-    },
-    {
-      id: 'maquineta',
-      title: 'Cartão na maquineta',
-      detail: 'Solicitar maquineta para pagamento presencial.',
-      asksCashChange: false
-    },
-    {
-      id: 'dinheiro',
-      title: 'Dinheiro',
-      detail: 'Pagamento em espécie na entrega ou retirada.',
-      asksCashChange: true
-    }
-  ]
+function fmtBrlCheckout(n: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n)
 }
+
+/** Monta `deliveryOptions` a partir de retirada / entrega / taxa (painel admin). */
+function applyDeliveryFlagsToOptions(opts: CheckoutOptions): CheckoutOptions {
+  const list: DeliveryOptionConfig[] = []
+  if (opts.pickupEnabled) {
+    list.push(
+      normalizeDeliveryOption({
+        id: 'retirada',
+        title: 'Retirada na loja',
+        description: 'Retire seu pedido no endereço da loja (veja “Sobre a loja”).',
+        showCustomerAddress: false
+      })
+    )
+  }
+  if (opts.deliveryEnabled) {
+    const fee = Math.max(0, Number(opts.deliveryFee) || 0)
+    const feeOn = opts.deliveryFeeEnabled === true
+    const desc = !feeOn
+      ? 'Entrega no endereço informado. Sem taxa de entrega no total.'
+      : fee > 0
+        ? `Taxa de entrega: ${fmtBrlCheckout(fee)}. Informe o endereço na finalização.`
+        : 'Taxa de entrega ativa (R$ 0,00). Informe o endereço na finalização.'
+    list.push(
+      normalizeDeliveryOption({
+        id: 'entrega',
+        title: 'Entrega',
+        description: desc,
+        showCustomerAddress: true
+      })
+    )
+  }
+  return { ...opts, deliveryOptions: list }
+}
+
+/** Monta `paymentOptions` a partir de dinheiro / cartão / PIX + chave PIX. */
+function applyPaymentFlagsToOptions(opts: CheckoutOptions): CheckoutOptions {
+  const list: PaymentOptionConfig[] = []
+  const pixKey = String(opts.pixKey ?? '').trim()
+  if (opts.paymentCashEnabled) {
+    list.push(
+      normalizePaymentOption({
+        id: 'dinheiro',
+        title: 'Dinheiro',
+        detail: 'Pagamento em espécie. Informe o troco abaixo, se precisar.',
+        asksCashChange: true
+      })
+    )
+  }
+  if (opts.paymentCardEnabled) {
+    list.push(
+      normalizePaymentOption({
+        id: 'cartao',
+        title: 'Cartão',
+        detail: 'Cartão de crédito ou débito.',
+        asksCashChange: false
+      })
+    )
+  }
+  if (opts.paymentPixEnabled) {
+    const detail =
+      pixKey.length > 0
+        ? pixKey.length > 96
+          ? `${pixKey.slice(0, 93)}…`
+          : pixKey
+        : 'Cadastre a chave PIX no painel administrativo.'
+    list.push(
+      normalizePaymentOption({
+        id: 'pix',
+        title: 'PIX',
+        detail,
+        asksCashChange: false
+      })
+    )
+  }
+  return { ...opts, paymentOptions: list }
+}
+
+function inferLegacyPaymentCash(legacy: PaymentOptionConfig[]): boolean {
+  if (legacy.length === 0) return true
+  return legacy.some((o) => /dinheiro|esp[eé]cie/i.test(`${o.id} ${o.title}`))
+}
+
+function inferLegacyPaymentCard(legacy: PaymentOptionConfig[]): boolean {
+  if (legacy.length === 0) return true
+  return legacy.some((o) => /cart[aã]o|cr[eé]dito|d[eé]bito/i.test(`${o.id} ${o.title}`))
+}
+
+function inferLegacyPaymentPix(legacy: PaymentOptionConfig[]): boolean {
+  if (legacy.length === 0) return true
+  return legacy.some((o) => /pix/i.test(`${o.id} ${o.title}`))
+}
+
+function inferLegacyPixKey(legacy: PaymentOptionConfig[]): string {
+  const row = legacy.find((o) => /pix/i.test(`${o.id} ${o.title}`))
+  return String(row?.detail ?? '').trim()
+}
+
+function inferLegacyPickupEnabled(d: unknown): boolean {
+  if (!Array.isArray(d) || d.length === 0) return true
+  return d.some((x) => {
+    const o = x as Partial<DeliveryOptionConfig>
+    const t = String(o.title ?? '')
+    return String(o.id ?? '') === 'retirada' || /retirada/i.test(t)
+  })
+}
+
+function inferLegacyDeliveryEnabled(d: unknown): boolean {
+  if (!Array.isArray(d) || d.length === 0) return true
+  return d.some((x) => {
+    const o = x as Partial<DeliveryOptionConfig>
+    const t = String(o.title ?? '')
+    return String(o.id ?? '') === 'entrega' || /entrega/i.test(t)
+  })
+}
+
+function parseLegacyDeliveryFee(d: unknown): number {
+  if (!Array.isArray(d)) return 0
+  const entrega = d.find((x) => {
+    const o = x as Partial<DeliveryOptionConfig>
+    const t = String(o.title ?? '')
+    return String(o.id ?? '') === 'entrega' || /entrega/i.test(t)
+  }) as Partial<DeliveryOptionConfig> | undefined
+  const desc = String(entrega?.description ?? '')
+  const m = desc.match(/(?:taxa\s*de\s*entrega|R\$)\s*:?\s*([\d]{1,9}(?:[.,]\d{1,2})?)/i)
+  if (!m) return 0
+  const raw = m[1].includes(',') ? m[1].replace(/\./g, '').replace(',', '.') : m[1]
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 0 ? n : 0
+}
+
+function normalizeLoadedCheckoutOptions(parsed: Partial<CheckoutOptions>): CheckoutOptions {
+  const rawPay = Array.isArray(parsed.paymentOptions) ? parsed.paymentOptions : []
+  const legacyP = rawPay.map((x) => normalizePaymentOption(x as Partial<PaymentOptionConfig>))
+  const legacyD = Array.isArray(parsed.deliveryOptions) ? parsed.deliveryOptions : []
+
+  const pickupExplicit = typeof parsed.pickupEnabled === 'boolean'
+  const deliveryExplicit = typeof parsed.deliveryEnabled === 'boolean'
+  const feeExplicit = typeof parsed.deliveryFee === 'number' && !Number.isNaN(parsed.deliveryFee)
+  const feeEnabledExplicit = typeof parsed.deliveryFeeEnabled === 'boolean'
+
+  const pickupEnabled = pickupExplicit
+    ? (parsed.pickupEnabled as boolean)
+    : inferLegacyPickupEnabled(legacyD)
+  const deliveryEnabled = deliveryExplicit
+    ? (parsed.deliveryEnabled as boolean)
+    : inferLegacyDeliveryEnabled(legacyD)
+  const deliveryFee = feeExplicit ? Math.max(0, parsed.deliveryFee as number) : parseLegacyDeliveryFee(legacyD)
+  const deliveryFeeEnabled = feeEnabledExplicit
+    ? (parsed.deliveryFeeEnabled as boolean)
+    : deliveryFee > 0
+
+  const cashEx = typeof parsed.paymentCashEnabled === 'boolean'
+  const cardEx = typeof parsed.paymentCardEnabled === 'boolean'
+  const pixEx = typeof parsed.paymentPixEnabled === 'boolean'
+  const pixKeyRaw = typeof parsed.pixKey === 'string' ? parsed.pixKey.trim() : inferLegacyPixKey(legacyP)
+
+  let paymentCashEnabled = cashEx ? (parsed.paymentCashEnabled as boolean) : inferLegacyPaymentCash(legacyP)
+  let paymentCardEnabled = cardEx ? (parsed.paymentCardEnabled as boolean) : inferLegacyPaymentCard(legacyP)
+  let paymentPixEnabled = pixEx ? (parsed.paymentPixEnabled as boolean) : inferLegacyPaymentPix(legacyP)
+  if (legacyP.length > 0 && !paymentCashEnabled && !paymentCardEnabled && !paymentPixEnabled) {
+    paymentCashEnabled = true
+    paymentCardEnabled = true
+    paymentPixEnabled = true
+  }
+
+  const waStored = typeof parsed.pedidoWhatsapp === 'string' ? parsed.pedidoWhatsapp : ''
+  const waNorm = normalizePedidoWhatsappToWaMe(waStored)
+  let pedidoWhatsapp = waNorm.ok ? waNorm.digits : ''
+  /** Remove número de teste legado que era fallback antes do cadastro no admin. */
+  if (pedidoWhatsapp === '5583999159349') pedidoWhatsapp = ''
+
+  const base: CheckoutOptions = {
+    pickupEnabled,
+    deliveryEnabled,
+    deliveryFeeEnabled,
+    deliveryFee,
+    paymentCashEnabled,
+    paymentCardEnabled,
+    paymentPixEnabled,
+    pixKey: pixKeyRaw,
+    pedidoWhatsapp,
+    deliveryOptions: [],
+    paymentOptions: []
+  }
+  return applyPaymentFlagsToOptions(applyDeliveryFlagsToOptions(base))
+}
+
+const DEFAULT_CHECKOUT_OPTIONS: CheckoutOptions = applyPaymentFlagsToOptions(
+  applyDeliveryFlagsToOptions({
+    pickupEnabled: true,
+    deliveryEnabled: true,
+    deliveryFeeEnabled: false,
+    deliveryFee: 0,
+    paymentCashEnabled: true,
+    paymentCardEnabled: true,
+    paymentPixEnabled: true,
+    pixKey: '',
+    pedidoWhatsapp: '',
+    deliveryOptions: [],
+    paymentOptions: []
+  })
+)
 
 function normalizeDeliveryOption(raw: Partial<DeliveryOptionConfig>): DeliveryOptionConfig {
   return {
@@ -277,14 +456,19 @@ function loadCheckoutOptions(): CheckoutOptions {
     const raw = localStorage.getItem(STORAGE_KEYS.checkoutOptions)
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<CheckoutOptions>
-      const d = Array.isArray(parsed.deliveryOptions) ? parsed.deliveryOptions : []
-      const p = Array.isArray(parsed.paymentOptions) ? parsed.paymentOptions : []
-      if (d.length > 0 && p.length > 0) {
-        return {
-          deliveryOptions: d.map((x) => normalizeDeliveryOption(x as Partial<DeliveryOptionConfig>)),
-          paymentOptions: p.map((x) => normalizePaymentOption(x as Partial<PaymentOptionConfig>))
+      const hadLegacyPedidoWa =
+        String(parsed.pedidoWhatsapp ?? '').replace(/\D/g, '') === '5583999159349'
+      const opts = normalizeLoadedCheckoutOptions(parsed)
+      if (hadLegacyPedidoWa) {
+        const synced = applyPaymentFlagsToOptions(applyDeliveryFlagsToOptions({ ...opts }))
+        try {
+          localStorage.setItem(STORAGE_KEYS.checkoutOptions, JSON.stringify(synced))
+        } catch (_) {
+          /* ignora quota / modo privado */
         }
+        return synced
       }
+      return opts
     }
   } catch (_) {
     /* ignora */
@@ -293,7 +477,9 @@ function loadCheckoutOptions(): CheckoutOptions {
 }
 
 function saveCheckoutOptions(opts: CheckoutOptions) {
-  localStorage.setItem(STORAGE_KEYS.checkoutOptions, JSON.stringify(opts))
+  const synced = applyPaymentFlagsToOptions(applyDeliveryFlagsToOptions({ ...opts }))
+  checkoutOptions = synced
+  localStorage.setItem(STORAGE_KEYS.checkoutOptions, JSON.stringify(synced))
 }
 
 let checkoutOptions = loadCheckoutOptions()
@@ -309,13 +495,13 @@ function getPaymentOption(id: string): PaymentOptionConfig | undefined {
 function clampDeliveryModeId(id: string | undefined): string {
   const opts = checkoutOptions.deliveryOptions
   if (id && opts.some((o) => o.id === id)) return id
-  return opts[0]?.id ?? 'entrega'
+  return opts[0]?.id ?? ''
 }
 
 function clampPaymentMethodId(id: string | undefined): string {
   const opts = checkoutOptions.paymentOptions
   if (id && opts.some((o) => o.id === id)) return id
-  return opts[0]?.id ?? 'pix'
+  return opts[0]?.id ?? ''
 }
 
 type StoreBranding = {
@@ -479,6 +665,48 @@ const CATEGORY_VALUES: Category[] = [
 
 const CATEGORY_SET = new Set<string>(CATEGORY_VALUES)
 
+const STEP_VALUES: Step[] = ['cadastro', 'catalogo', 'carrinho', 'checkout', 'concluido', 'admin']
+
+function normalizePersistedStep(raw: unknown): Step | undefined {
+  if (typeof raw !== 'string') return undefined
+  return STEP_VALUES.includes(raw as Step) ? (raw as Step) : undefined
+}
+
+function normalizeFiltroCatPersist(raw: unknown): 'todas' | Category {
+  if (raw === 'todas') return 'todas'
+  if (typeof raw === 'string' && CATEGORY_SET.has(raw)) return raw as Category
+  return 'todas'
+}
+
+function cartRecordIsEmpty(c: Record<string, number>): boolean {
+  return !Object.values(c).some((q) => (q ?? 0) > 0)
+}
+
+/** Evita estados impossíveis após F5 (ex.: checkout sem itens). */
+function reconcilePersistedStep(p: {
+  step: Step
+  prevStep: Step
+  hasName: boolean
+  cartEmpty: boolean
+  pedidoNumero: string
+  isAdminAuthenticated: boolean
+}): { step: Step; prevStep: Step } {
+  const { step, prevStep, hasName, cartEmpty, pedidoNumero, isAdminAuthenticated } = p
+  if (step === 'admin' && !isAdminAuthenticated) {
+    return { step: hasName ? 'catalogo' : 'cadastro', prevStep: hasName ? 'catalogo' : 'cadastro' }
+  }
+  if (!hasName && step !== 'cadastro') {
+    return { step: 'cadastro', prevStep: 'catalogo' }
+  }
+  if (step === 'checkout' && cartEmpty) {
+    return { step: hasName ? 'catalogo' : 'cadastro', prevStep: 'catalogo' }
+  }
+  if (step === 'concluido' && !pedidoNumero.trim()) {
+    return { step: hasName ? 'catalogo' : 'cadastro', prevStep: hasName ? 'carrinho' : 'catalogo' }
+  }
+  return { step, prevStep }
+}
+
 function normalizeCategory(raw: unknown): Category {
   if (typeof raw === 'string' && CATEGORY_SET.has(raw)) return raw as Category
   return 'Outros'
@@ -608,12 +836,19 @@ type PersistedState = {
   deliveryMode: string
   paymentMethod: string
   cashChangeFor: string
+  step?: Step
+  prevStep?: Step
+  filtroBusca?: string
+  filtroCategoria?: string
+  isAdminAuthenticated?: boolean
+  pedidoNumero?: string
+  fichaTecnicaId?: string | null
 }
 
 function loadState(): Partial<PersistedState> {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.state)
-    if (raw) return JSON.parse(raw) as PersistedState
+    if (raw) return JSON.parse(raw) as Partial<PersistedState>
   } catch (_) { /* ignora parse error */ }
   return {}
 }
@@ -624,9 +859,20 @@ function persistState() {
     cart: appState.cart,
     deliveryMode: appState.deliveryMode,
     paymentMethod: appState.paymentMethod,
-    cashChangeFor: appState.cashChangeFor
+    cashChangeFor: appState.cashChangeFor,
+    step: appState.step,
+    prevStep: appState.prevStep,
+    filtroBusca: appState.filtroBusca,
+    filtroCategoria: appState.filtroCategoria,
+    isAdminAuthenticated: appState.isAdminAuthenticated,
+    pedidoNumero: appState.pedidoNumero,
+    fichaTecnicaId: appState.fichaTecnicaId
   }
-  localStorage.setItem(STORAGE_KEYS.state, JSON.stringify(toSave))
+  try {
+    localStorage.setItem(STORAGE_KEYS.state, JSON.stringify(toSave))
+  } catch (_) {
+    /* quota ou navegação privada */
+  }
 }
 
 // ─── Estado da aplicação ─────────────────────────────────────────────────────
@@ -642,28 +888,58 @@ const emptyCustomer = (): Customer => ({
   whatsapp: ''
 })
 
-const appState: AppState = {
-  step: 'cadastro',
-  prevStep: 'catalogo',
-  customer: {
-    ...emptyCustomer(),
-    ...(saved.customer ?? {}),
-    cpf: normalizeCpfDigits(String((saved.customer as Partial<Customer> | undefined)?.cpf ?? ''))
-  },
-  filtroBusca: '',
-  filtroCategoria: 'todas',
-  cart: saved.cart ?? {},
-  deliveryMode: clampDeliveryModeId(saved.deliveryMode),
-  paymentMethod: clampPaymentMethodId(saved.paymentMethod),
-  cashChangeFor: saved.cashChangeFor ?? '',
-  isAdminAuthenticated: false,
-  pedidoNumero: '',
-  fichaTecnicaId: null
+const savedCust = saved.customer as Partial<Customer> | undefined
+const customerMerged: Customer = {
+  ...emptyCustomer(),
+  ...(savedCust ?? {}),
+  cpf: normalizeCpfDigits(String(savedCust?.cpf ?? ''))
 }
 
-// Se havia cadastro salvo, vai direto ao catálogo
-if (appState.customer.nomeCompleto) {
-  appState.step = 'catalogo'
+const cartMerged: Record<string, number> =
+  saved.cart && typeof saved.cart === 'object' && !Array.isArray(saved.cart)
+    ? { ...(saved.cart as Record<string, number>) }
+    : {}
+
+const hasName = Boolean(customerMerged.nomeCompleto.trim())
+const savedStep = normalizePersistedStep(saved.step)
+const savedPrev = normalizePersistedStep(saved.prevStep)
+let initialStep: Step =
+  savedStep !== undefined ? savedStep : hasName ? 'catalogo' : 'cadastro'
+let initialPrev: Step = savedPrev !== undefined ? savedPrev : 'catalogo'
+
+const deliveryModeInit = clampDeliveryModeId(saved.deliveryMode)
+const paymentMethodInit = clampPaymentMethodId(saved.paymentMethod)
+const filtroBuscaInit = typeof saved.filtroBusca === 'string' ? saved.filtroBusca : ''
+const filtroCategoriaInit = normalizeFiltroCatPersist(saved.filtroCategoria)
+const pedidoNumeroInit = typeof saved.pedidoNumero === 'string' ? saved.pedidoNumero : ''
+const fichaTecnicaIdInit =
+  saved.fichaTecnicaId === null || typeof saved.fichaTecnicaId === 'string'
+    ? (saved.fichaTecnicaId ?? null)
+    : null
+const isAdminAuthenticatedInit = saved.isAdminAuthenticated === true
+
+const reconciled = reconcilePersistedStep({
+  step: initialStep,
+  prevStep: initialPrev,
+  hasName,
+  cartEmpty: cartRecordIsEmpty(cartMerged),
+  pedidoNumero: pedidoNumeroInit,
+  isAdminAuthenticated: isAdminAuthenticatedInit
+})
+
+const appState: AppState = {
+  step: reconciled.step,
+  prevStep: reconciled.prevStep,
+  customer: customerMerged,
+  filtroBusca: filtroBuscaInit,
+  filtroCategoria: filtroCategoriaInit,
+  cart: cartMerged,
+  deliveryMode: deliveryModeInit,
+  paymentMethod: paymentMethodInit,
+  cashChangeFor: saved.cashChangeFor ?? '',
+  isAdminAuthenticated: isAdminAuthenticatedInit,
+  pedidoNumero: pedidoNumeroInit,
+  fichaTecnicaId: fichaTecnicaIdInit
 }
 
 let products = loadProductsFromStorage()
@@ -834,6 +1110,18 @@ function cartTotal() {
   return cartItems().reduce((s, i) => s + i.subtotal, 0)
 }
 
+/** Taxa de entrega aplicada com modalidade “entrega” + opção de taxa ativas no admin. */
+function checkoutDeliveryFeeTotal(): number {
+  if (appState.deliveryMode !== 'entrega') return 0
+  if (!checkoutOptions.deliveryFeeEnabled) return 0
+  const fee = checkoutOptions.deliveryFee
+  return typeof fee === 'number' && !Number.isNaN(fee) ? Math.max(0, fee) : 0
+}
+
+function checkoutOrderTotal(): number {
+  return cartTotal() + checkoutDeliveryFeeTotal()
+}
+
 function cartCount() {
   return cartItems().reduce((s, i) => s + i.qty, 0)
 }
@@ -964,18 +1252,59 @@ function resetToNewCustomerRegistration() {
 
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────
 
-const LOJA_WHATSAPP = '5583999159349' // número de teste (Brasil)
+function normalizePedidoWhatsappToWaMe(
+  raw: string
+): { ok: true; digits: string } | { ok: false; message: string } {
+  const d = raw.replace(/\D/g, '')
+  if (!d) return { ok: true, digits: '' }
+  if (d.length < 10) {
+    return {
+      ok: false,
+      message:
+        'O WhatsApp para envio do pedido precisa ter pelo menos 10 dígitos (DDD + número ou código do país), ou deixe o campo em branco.'
+    }
+  }
+  if (d.startsWith('55') && d.length >= 12) return { ok: true, digits: d }
+  let local = d
+  if (local.length === 11 && local[0] === '0') local = local.slice(1)
+  if (local.length === 10 || local.length === 11) return { ok: true, digits: `55${local}` }
+  return { ok: true, digits: d }
+}
+
+/** Exibe no painel o valor salvo (formato BR quando couber). */
+function formatPedidoWhatsappForAdminField(storedDigits: string): string {
+  const s = String(storedDigits ?? '').replace(/\D/g, '')
+  if (!s) return ''
+  if (s.startsWith('55') && s.length >= 12) {
+    const local = s.slice(2, 13)
+    if (local.length === 10 || local.length === 11) return formatWhatsapp(local)
+  }
+  return s
+}
+
+function lojaWhatsAppDigitsForPedido(): string {
+  const d = String(checkoutOptions.pedidoWhatsapp ?? '').replace(/\D/g, '')
+  return d.length >= 10 ? d : ''
+}
+
+function pedidoWhatsappEnvioDisponivel(): boolean {
+  return lojaWhatsAppDigitsForPedido().length >= 10
+}
 
 function paymentMethodLabel(methodId: string): string {
-  return getPaymentOption(methodId)?.title ?? methodId
+  return getPaymentOption(methodId)?.title ?? methodId ?? 'Não configurado'
 }
 
 function paymentMethodDetail(methodId: string): string {
+  if (methodId === 'pix') {
+    const k = checkoutOptions.pixKey?.trim()
+    return k ? `Chave PIX: ${k}` : 'PIX'
+  }
   const opt = getPaymentOption(methodId)
   if (!opt) return ''
   if (opt.asksCashChange && appState.cashChangeFor) {
     const changeValue = Number(appState.cashChangeFor)
-    if (!Number.isNaN(changeValue) && changeValue >= cartTotal()) {
+    if (!Number.isNaN(changeValue) && changeValue >= checkoutOrderTotal()) {
       return `${opt.detail} Troco para: ${currency.format(changeValue)}.`
     }
   }
@@ -983,48 +1312,90 @@ function paymentMethodDetail(methodId: string): string {
 }
 
 function deliveryModeSubtitle(o: DeliveryOptionConfig): string {
-  if (o.showCustomerAddress) return appState.customer.enderecoCompleto || '—'
+  if (o.showCustomerAddress) {
+    const addr = appState.customer.enderecoCompleto || '—'
+    if (o.id === 'entrega' && checkoutOptions.deliveryFeeEnabled) {
+      const fee = Math.max(0, Number(checkoutOptions.deliveryFee) || 0)
+      const taxa =
+        fee > 0 ? `${currency.format(fee)} de taxa.` : 'Taxa ativa (R$ 0,00).'
+      return `${taxa} ${addr}`
+    }
+    return addr
+  }
   return o.description || '—'
 }
 
 function readCheckoutOptionsFromAdminDom(): CheckoutOptions | null {
-  const dBody = document.getElementById('co-delivery-tbody')
-  const pBody = document.getElementById('co-payment-tbody')
-  if (!dBody || !pBody) return null
-  const deliveryOptions: DeliveryOptionConfig[] = []
-  for (const row of dBody.querySelectorAll('tr[data-co-delivery]')) {
-    const id = row.getAttribute('data-co-delivery')
-    if (!id) continue
-    const title = (row.querySelector('.co-inp-delivery-title') as HTMLInputElement).value.trim()
-    const description = (row.querySelector('.co-inp-delivery-desc') as HTMLInputElement).value.trim()
-    const showCustomerAddress = (row.querySelector('.co-inp-delivery-addr') as HTMLInputElement).checked
-    if (!title) {
-      alert('Preencha o título de cada modalidade de entrega.')
-      return null
-    }
-    deliveryOptions.push(normalizeDeliveryOption({ id, title, description, showCustomerAddress }))
-  }
-  const paymentOptions: PaymentOptionConfig[] = []
-  for (const row of pBody.querySelectorAll('tr[data-co-payment]')) {
-    const id = row.getAttribute('data-co-payment')
-    if (!id) continue
-    const title = (row.querySelector('.co-inp-payment-title') as HTMLInputElement).value.trim()
-    const detail = (row.querySelector('.co-inp-payment-detail') as HTMLInputElement).value.trim()
-    const asksCashChange = (row.querySelector('.co-inp-payment-cash') as HTMLInputElement).checked
-    if (!title) {
-      alert('Preencha o título de cada forma de pagamento.')
-      return null
-    }
-    paymentOptions.push(normalizePaymentOption({ id, title, detail, asksCashChange }))
-  }
-  if (!deliveryOptions.length || !paymentOptions.length) {
-    alert('É necessário pelo menos uma modalidade de entrega e uma forma de pagamento.')
+  const pickupEl = document.getElementById('co-pickup-enabled') as HTMLInputElement | null
+  const deliveryEl = document.getElementById('co-delivery-enabled') as HTMLInputElement | null
+  const feeEnabledEl = document.getElementById('co-delivery-fee-enabled') as HTMLInputElement | null
+  const feeEl = document.getElementById('co-delivery-fee') as HTMLInputElement | null
+  const cashEl = document.getElementById('co-pay-cash') as HTMLInputElement | null
+  const cardEl = document.getElementById('co-pay-card') as HTMLInputElement | null
+  const pixEl = document.getElementById('co-pay-pix') as HTMLInputElement | null
+  const pixKeyEl = document.getElementById('co-pix-key') as HTMLInputElement | null
+  const pedidoWaEl = document.getElementById('co-pedido-whatsapp') as HTMLInputElement | null
+  if (
+    !pickupEl ||
+    !deliveryEl ||
+    !feeEnabledEl ||
+    !feeEl ||
+    !cashEl ||
+    !cardEl ||
+    !pixEl ||
+    !pixKeyEl ||
+    !pedidoWaEl
+  ) {
     return null
   }
-  return { deliveryOptions, paymentOptions }
+
+  const pickupEnabled = pickupEl.checked
+  const deliveryEnabled = deliveryEl.checked
+  const deliveryFeeEnabled = feeEnabledEl.checked
+  const feeRaw = Number(String(feeEl.value).replace(',', '.'))
+  const deliveryFee = Number.isFinite(feeRaw) ? Math.max(0, feeRaw) : 0
+
+  if (!pickupEnabled && !deliveryEnabled) {
+    alert('Marque ao menos uma opção: retirada na loja ou entrega.')
+    return null
+  }
+
+  const paymentCashEnabled = cashEl.checked
+  const paymentCardEnabled = cardEl.checked
+  const paymentPixEnabled = pixEl.checked
+  const pixKey = String(pixKeyEl.value ?? '').trim().slice(0, 200)
+
+  if (!paymentCashEnabled && !paymentCardEnabled && !paymentPixEnabled) {
+    alert('Marque ao menos uma forma de pagamento: dinheiro, cartão ou PIX.')
+    return null
+  }
+
+  const waNorm = normalizePedidoWhatsappToWaMe(String(pedidoWaEl.value ?? ''))
+  if (!waNorm.ok) {
+    alert(waNorm.message)
+    pedidoWaEl.focus()
+    return null
+  }
+
+  const out: CheckoutOptions = {
+    pickupEnabled,
+    deliveryEnabled,
+    deliveryFeeEnabled,
+    deliveryFee,
+    paymentCashEnabled,
+    paymentCardEnabled,
+    paymentPixEnabled,
+    pixKey,
+    pedidoWhatsapp: waNorm.digits,
+    deliveryOptions: [],
+    paymentOptions: []
+  }
+  return out
 }
 
 function buildWhatsAppUrl(): string {
+  const phone = lojaWhatsAppDigitsForPedido()
+  if (phone.length < 10) return '#'
   const loja = storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa
   const lines: string[] = [
     `*Novo Pedido - ${loja}*`,
@@ -1048,10 +1419,16 @@ function buildWhatsAppUrl(): string {
     lines.push(`• ${product.nome} × ${qty} = ${currency.format(subtotal)}`)
   })
 
-  lines.push(``, `*Total: ${currency.format(cartTotal())}*`)
+  const fee = checkoutDeliveryFeeTotal()
+  const sub = cartTotal()
+  const total = checkoutOrderTotal()
+  if (fee > 0) {
+    lines.push('', `*Subtotal (itens):* ${currency.format(sub)}`, `*Taxa de entrega:* ${currency.format(fee)}`)
+  }
+  lines.push(``, `*Total: ${currency.format(total)}*`)
 
   const message = encodeURIComponent(lines.join('\n'))
-  return `https://wa.me/${LOJA_WHATSAPP}?text=${message}`
+  return `https://wa.me/${lojaWhatsAppDigitsForPedido()}?text=${message}`
 }
 
 function formatWhatsapp(value: string): string {
@@ -1142,62 +1519,161 @@ function stepIndicator(active: number) {
   `
 }
 
+function cadastroClubWordmarkLines(): { line1: string; line2: string } {
+  const raw = (storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa).trim()
+  const parts = raw.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    return {
+      line1: parts[0].toUpperCase(),
+      line2: parts.slice(1).join(' ').toUpperCase()
+    }
+  }
+  if (parts.length === 1) {
+    return { line1: parts[0].toUpperCase(), line2: 'MULTIMARCAS' }
+  }
+  return { line1: 'CASTRO', line2: 'MULTIMARCAS' }
+}
+
 function cadastroScreen() {
   const namesOptions = customerNameOptionsHtml()
+  const nomeLoja = escapeHtml(storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa)
+  const nomeParaCmp = (storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa).replace(/\s+/g, ' ').trim().toUpperCase()
+  const tagRaw = ((storeBranding.tagline ?? '').trim() || DEFAULT_BRANDING.tagline).replace(/\s+/g, ' ').trim().toUpperCase()
+  const showTagline = tagRaw.length > 0 && tagRaw !== nomeParaCmp
+  const tagLoja = escapeHtml((storeBranding.tagline ?? '').trim() || DEFAULT_BRANDING.tagline)
+  const wm = cadastroClubWordmarkLines()
+  const wm1 = escapeHtml(wm.line1)
+  const wm2 = escapeHtml(wm.line2)
+  const heroImg = escapeAttr(cadastroLojaBg)
+  const logoSrc = escapeAttr(getLogoSrc())
   return `
-    <section class="screen fade-in">
-      <div class="card">
-        ${stepIndicator(1)}
-        <div class="screen-header">
-          <p class="eyebrow">Bem-vindo a ${escapeHtml(storeBranding.nomeEmpresa || DEFAULT_BRANDING.nomeEmpresa)}</p>
-          <h1>Cadastro do Cliente</h1>
-          <p class="lead">Preencha seus dados para acessar o catálogo e realizar pedidos. Se você já se cadastrou antes, digite o <strong>CPF</strong> e os demais campos serão preenchidos automaticamente.</p>
-        </div>
-        <form id="cadastro-form" class="form-grid" novalidate>
-          <datalist id="customer-name-suggestions">${namesOptions}</datalist>
-          <label>
-            CPF *
-            <input
-              required
-              id="customer-cpf"
-              name="cpf"
-              value="${escapeAttr(formatCpfDisplay(appState.customer.cpf))}"
-              placeholder="000.000.000-00"
-              autocomplete="off"
-              inputmode="numeric"
-              maxlength="14"
-            />
-          </label>
-          <label>
-            Nome completo *
-            <input required id="customer-full-name" name="nomeCompleto" value="${appState.customer.nomeCompleto}"
-              placeholder="Ex: João da Silva" autocomplete="name" list="customer-name-suggestions" />
-          </label>
-          <label>
-            Como prefere ser chamado(a) no pedido *
-            <input required id="customer-workshop" name="nomeOficina" value="${appState.customer.nomeOficina}"
-              placeholder="Ex: @instagram ou primeiro nome" />
-          </label>
-          <label class="full">
-            Endereço completo *
-            <input required id="customer-address" name="enderecoCompleto" value="${appState.customer.enderecoCompleto}"
-              placeholder="Rua, número, bairro, cidade – CEP" autocomplete="street-address" />
-          </label>
-          <label>
-            E-mail *
-            <input required id="customer-email" type="email" name="email" value="${appState.customer.email}"
-              placeholder="seu@email.com" autocomplete="email" />
-          </label>
-          <label>
-            WhatsApp *
-            <input id="customer-whatsapp" type="tel" name="whatsapp" value="${appState.customer.whatsapp}"
-              placeholder="(00) 00000-0000" autocomplete="tel"
-              required maxlength="15" inputmode="numeric" pattern="^\\(\\d{2}\\) \\d{5}-\\d{4}$" />
-          </label>
-          <div class="full form-actions">
-            <button type="submit" class="btn primary">Acessar o Catálogo →</button>
+    <section class="screen cadastro-entry cadastro-club fade-in">
+      <div class="cadastro-club-pattern" aria-hidden="true"></div>
+      <div class="cadastro-club-shell">
+        <div class="cadastro-club-left">
+          <img class="cadastro-club-photo" src="${heroImg}" alt="" />
+          <div class="cadastro-club-left-scrim" aria-hidden="true"></div>
+          <div class="cadastro-club-left-content">
+            <p class="cadastro-club-pedidos">Pedidos online</p>
+            <div class="cadastro-club-logo-wrap">
+              <img
+                class="cadastro-club-logo-img"
+                src="${logoSrc}"
+                alt="${nomeLoja}"
+                width="200"
+                height="72"
+                loading="eager"
+                decoding="async"
+                onerror="this.style.display='none'"
+              />
+            </div>
+            <div class="cadastro-club-brand-rail">
+              <h1 class="cadastro-club-brand" id="cadastro-hero-title">
+                <span class="cadastro-club-brand-line">${wm1}</span>
+                <span class="cadastro-club-brand-line cadastro-club-brand-line--accent">${wm2}</span>
+              </h1>
+            </div>
+            ${showTagline ? `<p class="cadastro-club-tagline">${tagLoja}</p>` : ''}
+            <nav class="cadastro-club-nav" aria-label="Destaques da loja">
+              <h2 class="cadastro-club-shop-title">Loja</h2>
+              <ul class="cadastro-club-links">
+                <li><span class="cadastro-club-link is-active">Novidades</span></li>
+                <li><span class="cadastro-club-link">Camisetas e blusas</span></li>
+                <li><span class="cadastro-club-link">Shorts e bermudas</span></li>
+                <li><span class="cadastro-club-link">Moda íntima</span></li>
+                <li><span class="cadastro-club-link">Acessórios</span></li>
+              </ul>
+            </nav>
+            <p class="cadastro-club-foot">${nomeLoja} — catálogo, carrinho e checkout em um só lugar.</p>
           </div>
-        </form>
+        </div>
+        <div class="cadastro-club-glass">
+          <div class="cadastro-club-glass-inner">
+            <p class="cadastro-club-kicker">Passo 1 de 4</p>
+            <h2 class="cadastro-club-glass-h">Iniciar pedido</h2>
+            <p class="cadastro-club-glass-lead">Bem-vindo(a) de volta!</p>
+            <div class="cadastro-club-stepbar">${stepIndicator(1)}</div>
+            <form id="cadastro-form" class="cadastro-club-form" novalidate>
+              <datalist id="customer-name-suggestions">${namesOptions}</datalist>
+              <label class="cadastro-line-field">
+                <span class="cadastro-line-icon" aria-hidden="true">◎</span>
+                <span class="cadastro-line-body">
+                  <span class="cadastro-line-label">CPF <span class="cadastro-req">*</span></span>
+                  <input
+                    class="cadastro-line-input"
+                    required
+                    id="customer-cpf"
+                    name="cpf"
+                    value="${escapeAttr(formatCpfDisplay(appState.customer.cpf))}"
+                    placeholder="000.000.000-00"
+                    autocomplete="off"
+                    inputmode="numeric"
+                    maxlength="14"
+                  />
+                </span>
+              </label>
+              <label class="cadastro-line-field">
+                <span class="cadastro-line-icon" aria-hidden="true">◇</span>
+                <span class="cadastro-line-body">
+                  <span class="cadastro-line-label">Nome completo <span class="cadastro-req">*</span></span>
+                  <input
+                    class="cadastro-line-input"
+                    required
+                    id="customer-full-name"
+                    name="nomeCompleto"
+                    value="${escapeAttr(appState.customer.nomeCompleto)}"
+                    placeholder="Seu nome"
+                    autocomplete="name"
+                    list="customer-name-suggestions"
+                  />
+                </span>
+              </label>
+              <label class="cadastro-line-field">
+                <span class="cadastro-line-icon" aria-hidden="true">✉</span>
+                <span class="cadastro-line-body">
+                  <span class="cadastro-line-label">E-mail <span class="cadastro-req">*</span></span>
+                  <input
+                    class="cadastro-line-input"
+                    required
+                    id="customer-email"
+                    type="email"
+                    name="email"
+                    value="${escapeAttr(appState.customer.email)}"
+                    placeholder="nome@email.com"
+                    autocomplete="email"
+                  />
+                </span>
+              </label>
+              <label class="cadastro-line-field">
+                <span class="cadastro-line-icon" aria-hidden="true">☎</span>
+                <span class="cadastro-line-body">
+                  <span class="cadastro-line-label">WhatsApp <span class="cadastro-req">*</span></span>
+                  <input
+                    class="cadastro-line-input"
+                    id="customer-whatsapp"
+                    type="tel"
+                    name="whatsapp"
+                    value="${escapeAttr(appState.customer.whatsapp)}"
+                    placeholder="(00) 00000-0000"
+                    autocomplete="tel"
+                    required
+                    maxlength="15"
+                    inputmode="numeric"
+                    pattern="^\\(\\d{2}\\) \\d{5}-\\d{4}$"
+                  />
+                </span>
+              </label>
+              <div class="cadastro-club-actions">
+                <button type="submit" class="cadastro-club-cta">
+                  Continuar <span class="cadastro-club-cta-arrow" aria-hidden="true">→</span>
+                </button>
+              </div>
+              <p class="cadastro-club-hint">
+                Já comprou aqui? Informe o <strong>CPF</strong> e os dados serão preenchidos automaticamente.
+              </p>
+            </form>
+          </div>
+        </div>
       </div>
       ${storeAboutCardHtml()}
     </section>
@@ -1456,6 +1932,8 @@ function cartScreen() {
 }
 
 function checkoutScreen() {
+  const hasDeliveryOptions = checkoutOptions.deliveryOptions.length > 0
+  const hasPaymentOptions = checkoutOptions.paymentOptions.length > 0
   const deliveryRadios = checkoutOptions.deliveryOptions
     .map(
       (o) => `
@@ -1483,8 +1961,21 @@ function checkoutScreen() {
           </label>`
     )
     .join('')
+  const deliveryBlock = hasDeliveryOptions
+    ? deliveryRadios
+    : '<p class="muted">Nenhuma modalidade cadastrada ainda. O administrador pode incluir manualmente no painel.</p>'
+  const paymentBlock = hasPaymentOptions
+    ? paymentRadios
+    : '<p class="muted">Nenhuma forma de pagamento cadastrada ainda. O administrador pode incluir manualmente no painel.</p>'
 
   const showCashBox = getPaymentOption(appState.paymentMethod)?.asksCashChange === true
+  const feeLine = checkoutDeliveryFeeTotal()
+  const orderTotal = checkoutOrderTotal()
+  const pixKeyTrim = checkoutOptions.pixKey?.trim() ?? ''
+  const showPixCopyBox =
+    checkoutOptions.paymentPixEnabled && appState.paymentMethod === 'pix' && pixKeyTrim.length > 0
+  const showPixMissingHint =
+    checkoutOptions.paymentPixEnabled && appState.paymentMethod === 'pix' && pixKeyTrim.length === 0
 
   return `
     <section class="screen card fade-in">
@@ -1497,12 +1988,12 @@ function checkoutScreen() {
       <form id="checkout-form" class="checkout-form">
         <fieldset>
           <legend>Modalidade de recebimento</legend>
-          ${deliveryRadios}
+          ${deliveryBlock}
         </fieldset>
 
         <fieldset>
           <legend>Forma de pagamento</legend>
-          ${paymentRadios}
+          ${paymentBlock}
           <div class="cash-change-box ${showCashBox ? '' : 'hidden'}" id="cash-change-box">
             <label>
               Troco para quanto? (opcional)
@@ -1517,6 +2008,19 @@ function checkoutScreen() {
               />
             </label>
           </div>
+          ${
+            showPixCopyBox
+              ? `<div class="pix-copy-box" id="pix-copy-box">
+            <p class="muted small" style="margin:0 0 8px;">Chave PIX da loja</p>
+            <div class="pix-key-row">
+              <code class="pix-key-text">${escapeHtml(pixKeyTrim)}</code>
+              <button type="button" class="btn" id="copy-pix-key">Copiar chave PIX</button>
+            </div>
+          </div>`
+              : showPixMissingHint
+                ? '<p class="muted small pix-pix-missing">PIX selecionado: cadastre a chave no painel administrativo para o cliente copiar aqui.</p>'
+                : ''
+          }
         </fieldset>
 
         <div class="summary-box">
@@ -1529,12 +2033,18 @@ function checkoutScreen() {
           <p><span class="muted">Referência / apelido:</span> <strong>${escapeHtml(appState.customer.nomeOficina)}</strong></p>
           <p><span class="muted">Itens:</span> <strong>${cartCount()} itens</strong></p>
           <p><span class="muted">Pagamento:</span> <strong>${paymentMethodLabel(appState.paymentMethod)}</strong></p>
-          <p><span class="muted">Total:</span> <strong class="total-highlight">${currency.format(cartTotal())}</strong></p>
+          <p><span class="muted">Subtotal (itens):</span> <strong>${currency.format(cartTotal())}</strong></p>
+          ${
+            feeLine > 0
+              ? `<p><span class="muted">Taxa de entrega:</span> <strong>${currency.format(feeLine)}</strong></p>`
+              : ''
+          }
+          <p><span class="muted">Total:</span> <strong class="total-highlight">${currency.format(orderTotal)}</strong></p>
         </div>
 
         <div class="actions">
           <button type="button" class="btn" id="back-cart">← Voltar ao carrinho</button>
-          <button type="submit" class="btn primary">Confirmar pedido ✓</button>
+          <button type="submit" class="btn primary" ${hasDeliveryOptions && hasPaymentOptions ? '' : 'disabled'}>Confirmar pedido ✓</button>
         </div>
       </form>
     </section>
@@ -1545,7 +2055,26 @@ function successScreen() {
   const mode = getDeliveryOption(appState.deliveryMode)?.title ?? '—'
   const payment = paymentMethodLabel(appState.paymentMethod)
   const paymentDetail = paymentMethodDetail(appState.paymentMethod)
-  const waUrl = buildWhatsAppUrl()
+  const waOk = pedidoWhatsappEnvioDisponivel()
+  const waUrl = waOk ? buildWhatsAppUrl() : ''
+
+  const waBlock = waOk
+    ? `
+      <div class="wa-banner">
+        <p>Envie os detalhes do pedido diretamente via WhatsApp para a loja:</p>
+        <a href="${waUrl}" target="_blank" rel="noreferrer noopener" class="btn wa-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M17.47 14.38c-.25-.13-1.47-.73-1.7-.81-.23-.08-.4-.12-.57.13s-.65.81-.8.97-.3.19-.54.06c-1.57-.78-2.6-1.4-3.64-3.17-.28-.48.28-.44.8-1.47.09-.19.05-.35-.02-.49s-.57-1.37-.78-1.87c-.2-.49-.41-.42-.57-.43h-.48c-.17 0-.44.06-.67.31s-.88.86-.88 2.09.9 2.43 1.03 2.6c.13.17 1.77 2.71 4.3 3.8.6.26 1.07.41 1.43.52.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.2-.58.2-1.08.14-1.18-.06-.1-.22-.16-.47-.28zM12.05 21.78a9.73 9.73 0 0 1-4.97-1.36L4 21.5l1.1-4c-.87-1.52-1.33-3.24-1.33-5.02C3.77 7.06 7.51 3.32 12.05 3.32c2.22 0 4.3.87 5.87 2.44a8.24 8.24 0 0 1 2.43 5.87c0 4.54-3.74 8.15-8.3 8.15zm0-17.38C6.7 4.4 2.35 8.74 2.35 14c0 1.97.57 3.9 1.66 5.57L2 22l2.54-1.97C6.17 21.32 8.07 22 10 22c5.28 0 9.6-4.32 9.6-9.6 0-2.56-1-4.97-2.8-6.77A9.54 9.54 0 0 0 12.05 4.4z"/>
+          </svg>
+          Enviar pedido pelo WhatsApp
+        </a>
+      </div>
+    `
+    : `
+      <div class="wa-banner wa-banner-muted">
+        <p class="muted small">O WhatsApp da loja para envio do pedido ainda não foi cadastrado no painel administrativo. Guarde o número do pedido acima e entre em contato com a loja pelo canal habitual.</p>
+      </div>
+    `
 
   return `
     <section class="screen card success fade-in">
@@ -1557,17 +2086,9 @@ function successScreen() {
       <p class="muted">Modalidade: <strong>${mode}</strong></p>
       <p class="muted">Pagamento: <strong>${payment}</strong></p>
       <p class="muted">${paymentDetail}</p>
-      <p class="muted">Total: <strong>${currency.format(cartTotal())}</strong></p>
+      <p class="muted">Total: <strong>${currency.format(checkoutOrderTotal())}</strong></p>
 
-      <div class="wa-banner">
-        <p>Envie os detalhes do pedido diretamente via WhatsApp para a loja:</p>
-        <a href="${waUrl}" target="_blank" rel="noreferrer noopener" class="btn wa-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17.47 14.38c-.25-.13-1.47-.73-1.7-.81-.23-.08-.4-.12-.57.13s-.65.81-.8.97-.3.19-.54.06c-1.57-.78-2.6-1.4-3.64-3.17-.28-.48.28-.44.8-1.47.09-.19.05-.35-.02-.49s-.57-1.37-.78-1.87c-.2-.49-.41-.42-.57-.43h-.48c-.17 0-.44.06-.67.31s-.88.86-.88 2.09.9 2.43 1.03 2.6c.13.17 1.77 2.71 4.3 3.8.6.26 1.07.41 1.43.52.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.2-.58.2-1.08.14-1.18-.06-.1-.22-.16-.47-.28zM12.05 21.78a9.73 9.73 0 0 1-4.97-1.36L4 21.5l1.1-4c-.87-1.52-1.33-3.24-1.33-5.02C3.77 7.06 7.51 3.32 12.05 3.32c2.22 0 4.3.87 5.87 2.44a8.24 8.24 0 0 1 2.43 5.87c0 4.54-3.74 8.15-8.3 8.15zm0-17.38C6.7 4.4 2.35 8.74 2.35 14c0 1.97.57 3.9 1.66 5.57L2 22l2.54-1.97C6.17 21.32 8.07 22 10 22c5.28 0 9.6-4.32 9.6-9.6 0-2.56-1-4.97-2.8-6.77A9.54 9.54 0 0 0 12.05 4.4z"/>
-          </svg>
-          Enviar pedido pelo WhatsApp
-        </a>
-      </div>
+      ${waBlock}
 
       <button class="btn" id="new-order">Fazer novo pedido</button>
     </section>
@@ -1633,38 +2154,13 @@ function adminScreen() {
     brandingPendingLogoDataUrl || b.logoUrl || logoLugarDasTintas
   )
 
-  const adminDeliveryRows = checkoutOptions.deliveryOptions
-    .map(
-      (o) => `
-      <tr data-co-delivery="${escapeAttr(o.id)}">
-        <td><input type="text" class="co-inp-delivery-title" value="${escapeAttr(o.title)}" /></td>
-        <td><input type="text" class="co-inp-delivery-desc" value="${escapeAttr(o.description)}" placeholder="Texto se não marcar end. cliente" /></td>
-        <td><input type="checkbox" class="co-inp-delivery-addr" ${o.showCustomerAddress ? 'checked' : ''} title="Mostrar endereço do cliente na finalização" /></td>
-        <td><button type="button" class="btn tiny danger" data-action="co-remove-delivery" data-id="${escapeAttr(o.id)}">Excluir</button></td>
-      </tr>`
-    )
-    .join('')
+  const adminDeliveryFeeValue = Number(checkoutOptions.deliveryFee) || 0
+  const adminPixKeyValue = escapeAttr(checkoutOptions.pixKey ?? '')
+  const adminPedidoWhatsappValue = escapeAttr(formatPedidoWhatsappForAdminField(checkoutOptions.pedidoWhatsapp ?? ''))
 
-  const adminPaymentRows = checkoutOptions.paymentOptions
-    .map(
-      (o) => `
-      <tr data-co-payment="${escapeAttr(o.id)}">
-        <td><input type="text" class="co-inp-payment-title" value="${escapeAttr(o.title)}" /></td>
-        <td><input type="text" class="co-inp-payment-detail" value="${escapeAttr(o.detail)}" /></td>
-        <td><input type="checkbox" class="co-inp-payment-cash" ${o.asksCashChange ? 'checked' : ''} title="Exibir campo de troco opcional" /></td>
-        <td><button type="button" class="btn tiny danger" data-action="co-remove-payment" data-id="${escapeAttr(o.id)}">Excluir</button></td>
-      </tr>`
-    )
-    .join('')
-
-  return `
-    <section class="screen fade-in">
-      <div class="card">
-        <p class="eyebrow">Painel administrativo</p>
-        <h1>Gerenciar Produtos</h1>
-        <p class="lead">Cadastre peças da sua loja de roupas. Com API + MongoDB, fotos podem ir para o servidor e o catálogo sincroniza automaticamente em desenvolvimento.</p>
-      </div>
-
+  const showServerOrdersDevPanel = import.meta.env.VITE_SHOW_SERVER_ORDERS_DEV === 'true'
+  const adminPedidosServidorHtml = showServerOrdersDevPanel
+    ? `
       <div class="card" id="admin-pedidos-panel">
         <h2>Pedidos no servidor</h2>
         <p class="muted small" style="margin-bottom:10px;">
@@ -1688,6 +2184,18 @@ function adminScreen() {
         <button type="button" class="btn primary" id="admin-load-pedidos">Carregar pedidos</button>
         <div id="admin-pedidos-out" class="admin-pedidos-out" style="margin-top:14px;"></div>
       </div>
+    `
+    : ''
+
+  return `
+    <section class="screen fade-in">
+      <div class="card">
+        <p class="eyebrow">Painel administrativo</p>
+        <h1>Gerenciar Produtos</h1>
+        <p class="lead">Cadastre peças da sua loja de roupas. Com API + MongoDB, fotos podem ir para o servidor e o catálogo sincroniza automaticamente em desenvolvimento.</p>
+      </div>
+
+      ${adminPedidosServidorHtml}
 
       <div class="card">
         <h2>Identidade da loja</h2>
@@ -1724,7 +2232,15 @@ function adminScreen() {
           </p>
           <label class="full">
             Descrição da empresa (opcional)
-            <textarea name="descricaoEmpresa" rows="3" maxlength="2000" placeholder="Conte um pouco da história ou do estilo da loja…">${escapeHtml(b.descricaoEmpresa)}</textarea>
+            <textarea
+              class="admin-descricao-empresa"
+              name="descricaoEmpresa"
+              rows="8"
+              maxlength="2000"
+              spellcheck="true"
+              placeholder="Conte um pouco da história ou do estilo da loja…"
+            >${escapeHtml(b.descricaoEmpresa)}</textarea>
+            <span class="admin-descricao-counter muted small" id="admin-descricao-counter" aria-live="polite">${b.descricaoEmpresa.length} / 2000</span>
           </label>
           <label>
             Ramo da empresa (opcional)
@@ -1746,32 +2262,90 @@ function adminScreen() {
       </div>
 
       <div class="card">
-        <h2>Pagamento e Entrega</h2>
-        <p class="muted small" style="margin-bottom: 12px;">
-          Opções exibidas na finalização do pedido. Inclua, edite ou exclua linhas; use <strong>Salvar</strong> para aplicar.
-          Em entrega, <strong>End. cliente</strong> mostra o endereço cadastrado. Em pagamento, <strong>Troco</strong> ativa o campo de troco (ex.: dinheiro).
+        <h2>Modalidades de entrega / retirada</h2>
+        <p class="muted small" style="margin-bottom: 14px;">
+          Defina o que o cliente pode escolher na finalização. Use <strong>Salvar entrega e pagamento</strong> no bloco seguinte para aplicar.
+          Com <strong>Entrega</strong>, o cliente informa o endereço. Marque <strong>Taxa de entrega</strong> para somar o valor ao total quando a entrega for escolhida; o campo de valor permanece editável.
         </p>
-        <h3 class="checkout-admin-subh">Modalidades de entrega / retirada</h3>
-        <div class="table-wrap">
-          <table class="admin-table admin-checkout-table">
-            <thead><tr><th>Título</th><th>Descrição auxiliar</th><th>End. cliente</th><th></th></tr></thead>
-            <tbody id="co-delivery-tbody">${adminDeliveryRows}</tbody>
-          </table>
+        <div class="admin-delivery-flags" role="group" aria-label="Modalidades de entrega">
+          <label class="admin-delivery-flag">
+            <input type="checkbox" id="co-pickup-enabled" ${checkoutOptions.pickupEnabled ? 'checked' : ''} />
+            <span>Retirada na loja</span>
+          </label>
+          <label class="admin-delivery-flag">
+            <input type="checkbox" id="co-delivery-enabled" ${checkoutOptions.deliveryEnabled ? 'checked' : ''} />
+            <span>Entrega</span>
+          </label>
+          <label class="admin-delivery-flag">
+            <input type="checkbox" id="co-delivery-fee-enabled" ${checkoutOptions.deliveryFeeEnabled ? 'checked' : ''} />
+            <span>Taxa de entrega</span>
+          </label>
+          <label class="admin-delivery-fee">
+            <span>Valor da taxa (R$)</span>
+            <input
+              type="number"
+              id="co-delivery-fee"
+              min="0"
+              step="0.01"
+              inputmode="decimal"
+              placeholder="0,00"
+              value="${adminDeliveryFeeValue}"
+            />
+          </label>
         </div>
-        <button type="button" class="btn" id="co-add-delivery" style="margin-bottom: 18px;">+ Adicionar modalidade</button>
+      </div>
 
-        <h3 class="checkout-admin-subh">Formas de pagamento</h3>
-        <div class="table-wrap">
-          <table class="admin-table admin-checkout-table">
-            <thead><tr><th>Título</th><th>Detalhe ao cliente</th><th>Troco</th><th></th></tr></thead>
-            <tbody id="co-payment-tbody">${adminPaymentRows}</tbody>
-          </table>
+      <div class="card">
+        <h2>Formas de pagamento</h2>
+        <p class="muted small" style="margin-bottom: 14px;">
+          Marque o que o cliente pode escolher na finalização. Com <strong>Dinheiro</strong>, aparece o campo opcional de troco. Em <strong>PIX</strong>, informe a chave (editável a qualquer momento).
+        </p>
+        <div class="admin-payment-flags" role="group" aria-label="Formas de pagamento">
+          <label class="admin-delivery-flag">
+            <input type="checkbox" id="co-pay-cash" ${checkoutOptions.paymentCashEnabled ? 'checked' : ''} />
+            <span>Dinheiro</span>
+          </label>
+          <label class="admin-delivery-flag">
+            <input type="checkbox" id="co-pay-card" ${checkoutOptions.paymentCardEnabled ? 'checked' : ''} />
+            <span>Cartão</span>
+          </label>
+          <label class="admin-delivery-flag">
+            <input type="checkbox" id="co-pay-pix" ${checkoutOptions.paymentPixEnabled ? 'checked' : ''} />
+            <span>PIX</span>
+          </label>
+          <label class="admin-pix-key-label">
+            <span>Chave PIX (copiada pelo cliente)</span>
+            <input
+              type="text"
+              id="co-pix-key"
+              maxlength="200"
+              autocomplete="off"
+              placeholder="E-mail, CPF, telefone, chave aleatória…"
+              value="${adminPixKeyValue}"
+            />
+          </label>
+          <div class="admin-pedido-wa-block">
+            <label class="admin-pix-key-label admin-pedido-wa-label">
+              <span>Número de WhatsApp para envio do pedido</span>
+              <input
+                type="tel"
+                id="co-pedido-whatsapp"
+                maxlength="24"
+                autocomplete="tel"
+                placeholder="(00) 00000-0000"
+                value="${adminPedidoWhatsappValue}"
+              />
+            </label>
+            <p class="muted small admin-pedido-wa-hint">
+              Texto de ajuda: em branco, o botão “Enviar pedido pelo WhatsApp” não aparece na confirmação. Preencha no formato <strong>(00) 00000-0000</strong> ou com código do país + DDD + número; quem finaliza o pedido envia a mensagem para esse WhatsApp.
+            </p>
+            <button type="button" class="btn tiny danger" id="co-pedido-whatsapp-clear">Limpar número cadastrado</button>
+          </div>
         </div>
-        <button type="button" class="btn" id="co-add-payment" style="margin-bottom: 18px;">+ Adicionar forma de pagamento</button>
 
         <div class="actions" style="flex-wrap: wrap; gap: 10px;">
-          <button type="button" class="btn primary" id="co-save">Salvar Pagamento e Entrega</button>
-          <button type="button" class="btn" id="co-reset-default">Restaurar opções padrão</button>
+          <button type="button" class="btn primary" id="co-save">Salvar entrega e pagamento</button>
+          <button type="button" class="btn" id="co-reset-default">Limpar todas as opções</button>
         </div>
       </div>
 
@@ -1920,9 +2494,13 @@ function template() {
     admin: adminScreen()
   }
 
+  const hideTopOnLanding = appState.step === 'cadastro'
   return `
-    <div class="app-shell">
-      <header class="topbar">
+    <div class="app-shell${hideTopOnLanding ? ' app-shell--cadastro-landing' : ''}">
+      ${
+        hideTopOnLanding
+          ? ''
+          : `<header class="topbar">
         <div class="topbar-left">
           <button class="btn topbar-back" id="go-back" aria-label="Voltar" ${backStep ? '' : 'disabled'}>←</button>
           <a class="topbar-logo" id="go-home" href="#" aria-label="Início">
@@ -1935,8 +2513,9 @@ function template() {
             ? '<button type="button" class="btn new-registration-btn" id="new-registration" title="Cadastrar novo cliente">Fazer novo cadastro</button>'
             : ''}
         </div>
-      </header>
-      ${backStep ? '<button class="btn floating-back" id="floating-back" aria-label="Voltar para a página anterior">← Voltar</button>' : ''}
+      </header>`
+      }
+      ${hideTopOnLanding || !backStep ? '' : '<button class="btn floating-back" id="floating-back" aria-label="Voltar para a página anterior">← Voltar</button>'}
       ${appState.step === 'catalogo' ? `
         <button class="btn floating-cart" id="floating-cart" aria-label="Abrir carrinho">
           🛒 Carrinho <span class="floating-cart-badge">${cartCount()}</span>
@@ -1967,16 +2546,19 @@ function bindEvents() {
   document.querySelectorAll<HTMLButtonElement>('[data-action="open-tech"]').forEach((btn) => {
     btn.addEventListener('click', () => {
       appState.fichaTecnicaId = btn.dataset.id ?? null
+      persistState()
       render()
     })
   })
   document.getElementById('close-ficha')?.addEventListener('click', () => {
     appState.fichaTecnicaId = null
+    persistState()
     render()
   })
   document.getElementById('ficha-overlay')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) {
       appState.fichaTecnicaId = null
+      persistState()
       render()
     }
   })
@@ -2019,6 +2601,9 @@ function bindEvents() {
     if (addressInput) addressInput.value = customer.enderecoCompleto
     if (emailInput) emailInput.value = customer.email
     if (whatsappInput) whatsappInput.value = formatWhatsapp(customer.whatsapp)
+    if (!workshopInput) appState.customer.nomeOficina = customer.nomeOficina
+    if (!addressInput) appState.customer.enderecoCompleto = customer.enderecoCompleto
+    persistState()
   }
 
   const tryAutofillByName = () => {
@@ -2056,6 +2641,31 @@ function bindEvents() {
     whatsappInput.value = formatWhatsapp(whatsappInput.value)
   })
 
+  const persistCadastroDraftFromDom = () => {
+    if (!cadastroForm) return
+    const fd = new FormData(cadastroForm)
+    appState.customer = {
+      ...appState.customer,
+      cpf: normalizeCpfDigits(String(fd.get('cpf') ?? '')),
+      nomeCompleto: String(fd.get('nomeCompleto') ?? '').trim(),
+      email: String(fd.get('email') ?? '').trim(),
+      whatsapp: String(fd.get('whatsapp') ?? '').trim()
+    }
+    persistState()
+  }
+  let cadastroDraftTimer: ReturnType<typeof setTimeout> | null = null
+  const scheduleCadastroDraftPersist = () => {
+    if (cadastroDraftTimer) clearTimeout(cadastroDraftTimer)
+    cadastroDraftTimer = setTimeout(() => {
+      cadastroDraftTimer = null
+      persistCadastroDraftFromDom()
+    }, 280)
+  }
+  ;[cpfInput, nameInput, emailInput, whatsappInput].forEach((el) => {
+    el?.addEventListener('input', scheduleCadastroDraftPersist)
+    el?.addEventListener('blur', persistCadastroDraftFromDom)
+  })
+
   cadastroForm?.addEventListener('submit', (e) => {
     e.preventDefault()
     const fd = new FormData(cadastroForm)
@@ -2071,7 +2681,7 @@ function bindEvents() {
       cpfInput?.focus()
       return
     }
-    if (!get('nomeCompleto') || !get('nomeOficina') || !get('enderecoCompleto') || !get('email') || !get('whatsapp')) {
+    if (!get('nomeCompleto') || !get('email') || !get('whatsapp')) {
       alert('Preencha todos os campos obrigatórios (*).')
       return
     }
@@ -2080,11 +2690,12 @@ function bindEvents() {
       whatsappInput?.focus()
       return
     }
+    const prev = appState.customer
     appState.customer = {
       cpf: cpfDigits,
       nomeCompleto: get('nomeCompleto'),
-      nomeOficina: get('nomeOficina'),
-      enderecoCompleto: get('enderecoCompleto'),
+      nomeOficina: prev.nomeOficina.trim(),
+      enderecoCompleto: prev.enderecoCompleto.trim(),
       email: get('email'),
       whatsapp: get('whatsapp')
     }
@@ -2098,10 +2709,12 @@ function bindEvents() {
   document.getElementById('search')?.addEventListener('input', (e) => {
     appState.filtroBusca = (e.target as HTMLInputElement).value
     refreshCatalogGrid()
+    persistState()
   })
   document.getElementById('category-filter')?.addEventListener('change', (e) => {
     appState.filtroCategoria = (e.target as HTMLSelectElement).value as 'todas' | Category
     refreshCatalogGrid()
+    persistState()
   })
 
   // Carrinho
@@ -2120,6 +2733,7 @@ function bindEvents() {
     radio.addEventListener('change', () => {
       appState.deliveryMode = radio.value
       persistState()
+      render()
     })
   })
 
@@ -2138,6 +2752,17 @@ function bindEvents() {
     })
   })
 
+  document.getElementById('copy-pix-key')?.addEventListener('click', async () => {
+    const key = checkoutOptions.pixKey?.trim()
+    if (!key) return
+    try {
+      await navigator.clipboard.writeText(key)
+      alert('Chave PIX copiada para a área de transferência.')
+    } catch {
+      window.prompt('Copie a chave PIX:', key)
+    }
+  })
+
   const checkoutForm = document.getElementById('checkout-form') as HTMLFormElement | null
   checkoutForm?.addEventListener('submit', (e) => {
     e.preventDefault()
@@ -2150,8 +2775,9 @@ function bindEvents() {
       const payOpt = getPaymentOption(appState.paymentMethod)
       if (payOpt?.asksCashChange && appState.cashChangeFor) {
         const changeValue = Number(appState.cashChangeFor)
-        if (Number.isNaN(changeValue) || changeValue < cartTotal()) {
-          alert(`O valor de troco deve ser maior ou igual ao total do pedido (${currency.format(cartTotal())}).`)
+        const totalPedido = checkoutOrderTotal()
+        if (Number.isNaN(changeValue) || changeValue < totalPedido) {
+          alert(`O valor de troco deve ser maior ou igual ao total do pedido (${currency.format(totalPedido)}).`)
           cashChangeInput?.focus()
           return
         }
@@ -2178,7 +2804,7 @@ function bindEvents() {
         const r = await storeApi.postPedidoJson({
           numero,
           items: cartItems().map(({ product, qty }) => ({ productId: product.id, qty })),
-          total: cartTotal(),
+          total: checkoutOrderTotal(),
           customer: appState.customer,
           deliveryMode: appState.deliveryMode,
           paymentMethod: appState.paymentMethod,
@@ -2222,6 +2848,7 @@ function bindEvents() {
     appState.cart = {}
     appState.filtroBusca = ''
     appState.filtroCategoria = 'todas'
+    appState.pedidoNumero = ''
     persistState()
     setStep('catalogo')
   })
@@ -2247,6 +2874,14 @@ function bindEvents() {
 
   // Admin – identidade da loja
   const brandingForm = document.getElementById('branding-form') as HTMLFormElement | null
+  const brandingDescTa = brandingForm?.querySelector<HTMLTextAreaElement>('textarea[name="descricaoEmpresa"]')
+  const brandingDescCounter = document.getElementById('admin-descricao-counter')
+  const syncBrandingDescCounter = () => {
+    if (!brandingDescTa || !brandingDescCounter) return
+    brandingDescCounter.textContent = `${brandingDescTa.value.length} / 2000`
+  }
+  brandingDescTa?.addEventListener('input', syncBrandingDescCounter)
+
   brandingForm?.addEventListener('submit', (e) => {
     e.preventDefault()
     const fd = new FormData(brandingForm)
@@ -2321,8 +2956,7 @@ function bindEvents() {
   document.getElementById('co-save')?.addEventListener('click', () => {
     const next = readCheckoutOptionsFromAdminDom()
     if (!next) return
-    checkoutOptions = next
-    saveCheckoutOptions(checkoutOptions)
+    saveCheckoutOptions(next)
     appState.deliveryMode = clampDeliveryModeId(appState.deliveryMode)
     appState.paymentMethod = clampPaymentMethodId(appState.paymentMethod)
     persistState()
@@ -2330,73 +2964,19 @@ function bindEvents() {
   })
 
   document.getElementById('co-reset-default')?.addEventListener('click', () => {
-    if (!confirm('Restaurar as opções de pagamento e entrega padrão?')) return
-    checkoutOptions = JSON.parse(JSON.stringify(DEFAULT_CHECKOUT_OPTIONS)) as CheckoutOptions
-    saveCheckoutOptions(checkoutOptions)
+    if (!confirm('Limpar todas as opções de pagamento e entrega?')) return
+    saveCheckoutOptions(JSON.parse(JSON.stringify(DEFAULT_CHECKOUT_OPTIONS)) as CheckoutOptions)
     appState.deliveryMode = clampDeliveryModeId(appState.deliveryMode)
     appState.paymentMethod = clampPaymentMethodId(appState.paymentMethod)
     persistState()
     render()
   })
 
-  document.getElementById('co-add-delivery')?.addEventListener('click', () => {
-    checkoutOptions.deliveryOptions.push(
-      normalizeDeliveryOption({
-        id: `del-${Date.now()}`,
-        title: 'Nova modalidade',
-        description: '',
-        showCustomerAddress: false
-      })
-    )
-    saveCheckoutOptions(checkoutOptions)
+  document.getElementById('co-pedido-whatsapp-clear')?.addEventListener('click', () => {
+    if (!confirm('Remover o número cadastrado? O botão de WhatsApp na confirmação do pedido deixará de aparecer até cadastrar outro número.')) return
+    saveCheckoutOptions({ ...checkoutOptions, pedidoWhatsapp: '' })
+    persistState()
     render()
-  })
-
-  document.getElementById('co-add-payment')?.addEventListener('click', () => {
-    checkoutOptions.paymentOptions.push(
-      normalizePaymentOption({
-        id: `pay-${Date.now()}`,
-        title: 'Nova forma de pagamento',
-        detail: '',
-        asksCashChange: false
-      })
-    )
-    saveCheckoutOptions(checkoutOptions)
-    render()
-  })
-
-  document.querySelectorAll<HTMLButtonElement>('[data-action="co-remove-delivery"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id
-      if (!id) return
-      if (checkoutOptions.deliveryOptions.length <= 1) {
-        alert('Mantenha pelo menos uma modalidade de entrega.')
-        return
-      }
-      if (!confirm('Excluir esta modalidade?')) return
-      checkoutOptions.deliveryOptions = checkoutOptions.deliveryOptions.filter((o) => o.id !== id)
-      saveCheckoutOptions(checkoutOptions)
-      appState.deliveryMode = clampDeliveryModeId(appState.deliveryMode)
-      persistState()
-      render()
-    })
-  })
-
-  document.querySelectorAll<HTMLButtonElement>('[data-action="co-remove-payment"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id
-      if (!id) return
-      if (checkoutOptions.paymentOptions.length <= 1) {
-        alert('Mantenha pelo menos uma forma de pagamento.')
-        return
-      }
-      if (!confirm('Excluir esta forma de pagamento?')) return
-      checkoutOptions.paymentOptions = checkoutOptions.paymentOptions.filter((o) => o.id !== id)
-      saveCheckoutOptions(checkoutOptions)
-      appState.paymentMethod = clampPaymentMethodId(appState.paymentMethod)
-      persistState()
-      render()
-    })
   })
 
   // Admin – fotos do produto (galeria, arquivo ou câmera)
@@ -2804,6 +3384,9 @@ function bindEvents() {
 
 function render() {
   syncCartWithStock()
+  const cadastroLanding = appState.step === 'cadastro'
+  app.classList.toggle('app-view-cadastro-landing', cadastroLanding)
+  document.body.classList.toggle('cadastro-landing-active', cadastroLanding)
   app.innerHTML = template()
   bindEvents()
 }

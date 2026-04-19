@@ -7,16 +7,21 @@ html {
 }
 
 :root {
-  --bg: #f0f4f9;
+  /* Fundo geral alinhado ao tom quente da página de cadastro */
+  --bg: #ebe4dc;
   --surface: #ffffff;
-  --surface-2: #eef2f7;
+  --surface-2: #f2ebe4;
   --text: #11213a;
-  --muted: #5c6b83;
+  --muted: #5c5348;
   --primary: #ff5a1f;
   --primary-strong: #e94b12;
-  --line: #d6dde9;
+  --line: #d8cfc4;
   --success: #0b8f5a;
-  --shadow: 0 14px 36px rgba(17, 33, 58, 0.12);
+  --shadow: 0 14px 36px rgba(34, 22, 14, 0.1);
+  /* Cabeçalho (catálogo, carrinho, pagamento, admin) — mesma sintonia do painel cadastro */
+  --topbar-gradient: linear-gradient(160deg, #2a1f18 0%, #3d2b1f 38%, #4a3428 62%, #6b4e3d 100%);
+  --topbar-shine: radial-gradient(circle at 88% 0%, rgba(212, 165, 116, 0.28), transparent 42%),
+    radial-gradient(circle at 8% 100%, rgba(139, 90, 43, 0.18), transparent 38%);
 }
 
 * {
@@ -28,8 +33,8 @@ body {
   font-family: 'Trebuchet MS', 'Lucida Sans', 'Segoe UI', sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at 10% 0%, rgba(255, 90, 31, 0.18), transparent 40%),
-    radial-gradient(circle at 90% 20%, rgba(17, 33, 58, 0.16), transparent 32%),
+    radial-gradient(circle at 10% 0%, rgba(212, 165, 116, 0.16), transparent 40%),
+    radial-gradient(circle at 90% 18%, rgba(42, 31, 24, 0.08), transparent 32%),
     var(--bg);
   min-height: 100vh;
   min-height: 100dvh;
@@ -49,17 +54,6 @@ body {
 .app-shell {
   display: grid;
   gap: 18px;
-}
-
-.topbar {
-  background: linear-gradient(130deg, #11213a 10%, #1d3359 50%, #ff5a1f 130%);
-  border-radius: 18px;
-  color: #fff;
-  padding: 16px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: var(--shadow);
 }
 
 .topbar h2 {
@@ -135,6 +129,25 @@ textarea {
   font-family: inherit;
   resize: vertical;
   min-height: 72px;
+}
+
+/* Painel admin: caixa fixa — o lojista não precisa redimensionar; limite visível ao lado */
+textarea.admin-descricao-empresa {
+  resize: none;
+  min-height: 168px;
+  height: 168px;
+  max-height: 168px;
+  overflow-y: auto;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+
+.admin-descricao-counter {
+  display: block;
+  margin-top: 4px;
+  font-weight: 600;
+  text-align: right;
+  letter-spacing: 0.02em;
 }
 
 input:focus,
@@ -343,21 +356,28 @@ td {
   gap: 10px;
 }
 
-/* ─── Topbar / Logo ──────────────────────────────────────────────────────── */
+/* ─── Topbar / Logo (tom cadastro: marrom + dourado) ─────────────────────── */
 .topbar {
-  background: linear-gradient(130deg, #11213a 10%, #1d3359 55%, #c23e10 130%);
+  background: var(--topbar-shine), var(--topbar-gradient);
   border-radius: 18px;
-  color: #fff;
+  color: #fff8f0;
   padding: 14px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: var(--shadow);
+  box-shadow:
+    0 18px 44px rgba(12, 6, 4, 0.35),
+    inset 0 1px 0 rgba(255, 240, 220, 0.08);
+  border: 1px solid rgba(255, 220, 180, 0.12);
 }
 .topbar-left { display: flex; align-items: center; gap: 10px; }
 .topbar-logo { text-decoration: none; display: flex; align-items: center; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
-.topbar-step  { color: rgba(255,255,255,0.75); font-size: 0.85rem; font-weight: 700; }
+.topbar-step {
+  color: rgba(255, 245, 230, 0.82);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
 
 .topbar-right {
   position: relative;
@@ -404,9 +424,11 @@ td {
     -1px 1px 0 #ffd84d,
     1px 1px 0 #ffd84d;
 }
-.brand-accent { color: #ff7c45; }
+.brand-accent {
+  color: #f4d58d;
+}
 .brand-tagline {
-  color: #ff7c45;
+  color: #f0c97a;
   font-size: 1.22rem;
   font-weight: 900;
   letter-spacing: 0.11em;
@@ -458,34 +480,38 @@ td {
   left: 16px;
   bottom: 16px;
   z-index: 50;
-  background: var(--primary);
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 10px 25px rgba(17, 33, 58, 0.25);
+  background: linear-gradient(145deg, #5c4332, #3d2b1f);
+  color: #fff8f0;
+  border-color: rgba(255, 220, 180, 0.2);
+  box-shadow: 0 10px 28px rgba(12, 6, 4, 0.35);
 }
-.floating-back:hover { background: #e54a14; }
+.floating-back:hover {
+  background: linear-gradient(145deg, #6b4e3d, #4a3428);
+}
 
 .floating-cart {
   position: fixed;
   right: 16px;
   bottom: 16px;
   z-index: 52;
-  background: #11213a;
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 10px 25px rgba(17, 33, 58, 0.32);
+  background: linear-gradient(145deg, #4a3428, #2a1f18);
+  color: #fff8f0;
+  border-color: rgba(255, 220, 180, 0.18);
+  box-shadow: 0 10px 28px rgba(12, 6, 4, 0.38);
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
-.floating-cart:hover { background: #1d3359; }
+.floating-cart:hover {
+  background: linear-gradient(145deg, #5c4332, #36261c);
+}
 
 .floating-cart-badge {
   min-width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: #ff7c45;
-  color: #fff;
+  background: #d4a574;
+  color: #2a1f18;
   display: grid;
   place-items: center;
   font-weight: 900;
@@ -552,17 +578,31 @@ td {
 .steps {
   display: flex;
   align-items: center;
+  width: 100%;
+  max-width: 100%;
   gap: 0;
   margin-bottom: 16px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  box-sizing: border-box;
 }
 .step-item {
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  min-width: 0;
   gap: 6px;
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 700;
+}
+.step-item span {
+  text-align: center;
+  line-height: 1.15;
 }
 .step-item.active  { color: var(--primary); }
 .step-item.done    { color: var(--success); }
@@ -579,11 +619,14 @@ td {
 .step-item.active .step-bullet  { background: var(--primary); color: #fff; border-color: var(--primary); }
 .step-item.done .step-bullet    { background: var(--success); color: #fff; border-color: var(--success); }
 .step-line {
-  flex: 1;
-  min-width: 20px;
+  flex: 0 0 clamp(6px, 1.8vw, 18px);
+  width: clamp(6px, 1.8vw, 18px);
+  min-width: 4px;
   height: 2px;
   background: var(--line);
-  margin: 0 4px;
+  margin: 0;
+  align-self: center;
+  flex-shrink: 0;
 }
 
 /* ─── Screen / Card ──────────────────────────────────────────────────────── */
@@ -603,8 +646,8 @@ input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
 
 /* ─── Toolbar (catálogo) ─────────────────────────────────────────────────── */
-.toolbar      { display: grid; gap: 10px; }
-.toolbar-top  { display: grid; gap: 4px; }
+.toolbar      { display: grid; gap: 10px; min-width: 0; }
+.toolbar-top  { display: grid; gap: 4px; min-width: 0; }
 .toolbar-actions {
   display: grid;
   grid-template-columns: auto 1fr minmax(140px,180px) auto;
@@ -955,6 +998,493 @@ fieldset legend {
   }
 }
 
+/* ─── Primeira página (estilo vitrine + painel vidro) ─────────────────────── */
+#app.app-view-cadastro-landing {
+  width: min(1120px, 100%);
+  max-width: 100%;
+  padding: clamp(12px, 3vw, 28px);
+}
+
+/* Fundo alinhado ao painel da landing (evita faixa do gradiente padrão do body no modo estreito) */
+body.cadastro-landing-active {
+  background: #221a15;
+}
+
+@media (min-width: 901px) {
+  body.cadastro-landing-active {
+    background:
+      radial-gradient(circle at 10% 0%, rgba(212, 165, 116, 0.12), transparent 42%),
+      radial-gradient(circle at 90% 20%, rgba(17, 33, 58, 0.1), transparent 32%),
+      #221a15;
+  }
+}
+
+.app-shell--cadastro-landing {
+  gap: 0;
+}
+
+.cadastro-entry.cadastro-club {
+  position: relative;
+  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+}
+
+.cadastro-club-pattern {
+  position: absolute;
+  inset: -12px;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(212, 165, 116, 0.35) 0%, transparent 42%),
+    radial-gradient(circle at 82% 78%, rgba(139, 90, 43, 0.22) 0%, transparent 38%),
+    repeating-linear-gradient(
+      -12deg,
+      transparent,
+      transparent 14px,
+      rgba(255, 255, 255, 0.04) 14px,
+      rgba(255, 255, 255, 0.04) 15px
+    ),
+    linear-gradient(160deg, #2a1f18 0%, #4a3428 45%, #6b4e3d 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cadastro-club-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(260px, 1.12fr) minmax(280px, 0.88fr);
+  min-height: min(560px, calc(100dvh - 120px));
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow:
+    0 28px 60px rgba(20, 12, 8, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+}
+
+.cadastro-club-left {
+  position: relative;
+  min-height: 320px;
+  color: #fff;
+}
+
+.cadastro-club-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  filter: saturate(1.08) contrast(1.02);
+}
+
+.cadastro-club-left-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    rgba(42, 28, 18, 0.82) 0%,
+    rgba(42, 28, 18, 0.45) 42%,
+    rgba(234, 185, 106, 0.15) 100%
+  );
+}
+
+.cadastro-club-left-content {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  padding: clamp(22px, 4vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cadastro-club-pedidos {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 248, 235, 0.88);
+}
+
+.cadastro-club-logo-wrap {
+  margin: 2px 0 0;
+  max-width: min(240px, 92vw);
+}
+
+.cadastro-club-logo-img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: clamp(48px, 12vw, 88px);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.5));
+}
+
+/* Faixa só atrás do título: legibilidade sem cobrir a foto inteira */
+.cadastro-club-brand-rail {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: clamp(12px, 2.5vw, 18px) clamp(14px, 3vw, 22px);
+  max-width: min(100%, 22ch);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(12, 8, 6, 0.42) 0%, rgba(28, 18, 12, 0.38) 100%);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.cadastro-club-brand {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.06em;
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.02;
+}
+
+.cadastro-club-brand-line {
+  display: block;
+  font-size: clamp(1.48rem, 4vw, 2.12rem);
+  color: #fffaf3;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.45),
+    0 4px 28px rgba(0, 0, 0, 0.55),
+    0 0 40px rgba(0, 0, 0, 0.25);
+}
+
+.cadastro-club-brand-line--accent {
+  font-size: clamp(1.02rem, 2.65vw, 1.58rem);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #f4d58d;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.5),
+    0 3px 22px rgba(0, 0, 0, 0.5);
+}
+
+.cadastro-club-tagline {
+  margin: 10px 0 0;
+  font-size: clamp(0.72rem, 1.8vw, 0.88rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #f0d4a8;
+}
+
+.cadastro-club-nav {
+  margin-top: 18px;
+}
+
+.cadastro-club-shop-title {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.cadastro-club-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.cadastro-club-link {
+  display: inline-block;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: rgba(255, 250, 240, 0.78);
+  padding: 2px 0;
+  border-bottom: 2px solid transparent;
+  cursor: default;
+}
+
+.cadastro-club-link.is-active {
+  color: #fff;
+  border-bottom-color: rgba(255, 255, 255, 0.85);
+}
+
+.cadastro-club-foot {
+  margin-top: auto;
+  padding-top: 16px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: rgba(255, 248, 235, 0.75);
+  max-width: 34ch;
+}
+
+.cadastro-club-glass {
+  position: relative;
+  background: rgba(38, 26, 18, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cadastro-club-glass-inner {
+  height: 100%;
+  padding: clamp(22px, 4vw, 34px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #fff8f0;
+  container-type: inline-size;
+  container-name: cadastro-glass;
+}
+
+.cadastro-club-kicker {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 230, 200, 0.65);
+}
+
+.cadastro-club-glass-h {
+  margin: 0;
+  font-size: clamp(1.35rem, 3.2vw, 1.65rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.cadastro-club-glass-lead {
+  margin: -4px 0 0;
+  font-size: 0.92rem;
+  color: rgba(255, 245, 230, 0.82);
+}
+
+.cadastro-club-stepbar {
+  margin: 4px 0 8px;
+}
+
+.cadastro-club-stepbar .steps {
+  margin-bottom: 0;
+}
+
+.cadastro-club-stepbar .step-item {
+  color: rgba(255, 240, 220, 0.55);
+  font-size: 0.72rem;
+}
+
+.cadastro-club-stepbar .step-item.active {
+  color: #ffd89a;
+}
+
+.cadastro-club-stepbar .step-item.done {
+  color: #b8f5c8;
+}
+
+.cadastro-club-stepbar .step-bullet {
+  border-color: rgba(255, 220, 180, 0.45);
+  color: rgba(255, 248, 235, 0.85);
+}
+
+.cadastro-club-stepbar .step-item.active .step-bullet {
+  background: #ffd89a;
+  color: #3d2918;
+  border-color: #ffd89a;
+}
+
+.cadastro-club-stepbar .step-line {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Painel de cadastro estreito: número em cima + rótulo — alinha com o espaço do glass */
+@container cadastro-glass (max-width: 520px) {
+  .cadastro-club-stepbar .steps {
+    align-items: flex-start;
+  }
+  .cadastro-club-stepbar .step-item {
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+  }
+  .cadastro-club-stepbar .step-line {
+    align-self: center;
+    margin-top: 11px;
+  }
+}
+
+.cadastro-club-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.cadastro-req {
+  color: #ffb38a;
+  font-weight: 800;
+}
+
+.cadastro-line-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.cadastro-line-icon {
+  flex-shrink: 0;
+  width: 1.25rem;
+  text-align: center;
+  font-size: 0.95rem;
+  opacity: 0.85;
+  line-height: 1.6;
+}
+
+.cadastro-line-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cadastro-line-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 236, 210, 0.65);
+}
+
+.cadastro-line-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 1rem;
+  padding: 2px 0 4px;
+  outline: none;
+}
+
+.cadastro-line-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.cadastro-line-input:focus {
+  box-shadow: none;
+}
+
+.cadastro-club-actions {
+  margin-top: 18px;
+}
+
+.cadastro-club-cta {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: none;
+  border-radius: 999px;
+  padding: 14px 22px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  color: #2c1f14;
+  background: linear-gradient(180deg, #fffefb 0%, #f2e6d6 100%);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cadastro-club-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.3);
+}
+
+.cadastro-club-cta-arrow {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.cadastro-club-hint {
+  margin: 14px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(255, 240, 220, 0.55);
+}
+
+.cadastro-club-hint strong {
+  color: rgba(255, 220, 180, 0.95);
+}
+
+.cadastro-entry.cadastro-club .store-about-card {
+  margin-top: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+@media (max-width: 900px) {
+  .cadastro-club-shell {
+    grid-template-columns: 1fr;
+    min-height: unset;
+  }
+
+  .cadastro-club-left {
+    min-height: 280px;
+  }
+
+  .cadastro-club-logo-img {
+    max-height: clamp(40px, 11vw, 72px);
+  }
+
+  .cadastro-club-brand-line {
+    font-size: clamp(1.5rem, 4.8vw, 2.1rem);
+  }
+
+  .cadastro-club-brand-line--accent {
+    font-size: clamp(1.1rem, 3.4vw, 1.55rem);
+    letter-spacing: 0.1em;
+  }
+
+  .cadastro-club-brand-rail {
+    max-width: min(100%, 18ch);
+    padding: 10px 14px;
+  }
+
+  .cadastro-club-glass {
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+@media (max-width: 520px) {
+  .cadastro-club-left {
+    min-height: 240px;
+  }
+
+  .cadastro-club-logo-img {
+    max-height: 40px;
+  }
+
+  .cadastro-club-brand-line {
+    font-size: 1.2rem;
+  }
+
+  .cadastro-club-brand-line--accent {
+    font-size: 0.92rem;
+    letter-spacing: 0.08em;
+  }
+
+  .cadastro-club-brand-rail {
+    max-width: 100%;
+    padding: 8px 12px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brand-logo img,
   .brand-tagline,
@@ -979,6 +1509,11 @@ fieldset legend {
   .btn { min-height: 44px; }
   input, select, textarea { min-height: 44px; font-size: 16px; }
   textarea { min-height: 88px; }
+  textarea.admin-descricao-empresa {
+    min-height: 168px;
+    height: 168px;
+    max-height: 168px;
+  }
   .topbar-left { min-width: 0; }
   .table-wrap { margin-inline: -4px; padding-inline: 4px; }
   .price-edit-input { width: 96px; }
@@ -987,8 +1522,25 @@ fieldset legend {
   .brand-logo img { height: 60px; max-width: 220px; }
   .brand-tagline { font-size: 0.98rem; letter-spacing: 0.08em; }
   .brand-logo::after { left: 58px; }
-  .steps { gap: 4px; }
-  .step-line { min-width: 12px; }
+  .steps {
+    padding-inline: 2px;
+    align-items: flex-start;
+  }
+  .step-item {
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+  }
+  .step-bullet {
+    width: 24px;
+    height: 24px;
+    font-size: 0.72rem;
+  }
+  .step-line {
+    flex-shrink: 0;
+    align-self: center;
+    margin-top: 11px;
+  }
 }
 
 @media (max-width: 520px) {
@@ -1013,6 +1565,11 @@ fieldset legend {
     padding-right: max(10px, env(safe-area-inset-right));
     padding-bottom: max(92px, calc(10px + env(safe-area-inset-bottom)));
     overflow-x: clip;
+  }
+
+  /* Cadastro: sem carrinho/flutuantes — mesmo “respiro” do preview (ex.: Simple Browser no Cursor) */
+  #app.app-view-cadastro-landing {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 
   .app-shell { gap: 12px; }
@@ -1405,11 +1962,106 @@ fieldset legend {
   min-width: 520px;
 }
 
-.checkout-admin-subh {
-  font-size: 1.05rem;
-  margin: 16px 0 8px;
+.admin-delivery-flags {
+  display: grid;
+  gap: 14px;
+  max-width: 420px;
+}
+
+.admin-delivery-flag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-delivery-flag input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.admin-delivery-fee {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.admin-delivery-fee input {
+  max-width: 200px;
+}
+
+.admin-payment-flags {
+  display: grid;
+  gap: 14px;
+  max-width: 520px;
+}
+
+.admin-pix-key-label {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.admin-pix-key-label input {
+  font-weight: 500;
+}
+
+.admin-pedido-wa-block {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+}
+
+.admin-pedido-wa-hint {
+  margin: 0;
+}
+
+.pix-copy-box {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.pix-key-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.pix-key-text {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  word-break: break-all;
+  border-radius: 8px;
+  background: #f0f4fa;
+  border: 1px solid var(--line);
   color: var(--text);
 }
+
+.pix-pix-missing {
+  margin-top: 12px;
+}
+
+.wa-banner-muted {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.5);
+}
+
 .admin-checkout-table {
   min-width: 520px;
 }
