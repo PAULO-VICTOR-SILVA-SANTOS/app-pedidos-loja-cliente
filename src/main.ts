@@ -2500,7 +2500,6 @@ function checkoutScreen() {
               ? `<p><span class="muted">CPF:</span> <strong>${escapeHtml(formatCpfDisplay(appState.customer.cpf))}</strong></p>`
               : ''
           }
-          <p><span class="muted">Referência / apelido:</span> <strong>${escapeHtml(appState.customer.nomeOficina)}</strong></p>
           <p><span class="muted">Itens:</span> <strong>${cartCount()} itens</strong></p>
           <p><span class="muted">Pagamento:</span> <strong>${paymentMethodLabel(appState.paymentMethod)}</strong></p>
           <p><span class="muted">Subtotal (itens):</span> <strong>${currency.format(cartTotal())}</strong></p>
