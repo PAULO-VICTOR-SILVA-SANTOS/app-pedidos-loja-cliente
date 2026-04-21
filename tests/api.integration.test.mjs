@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
-import { MongoMemoryServer } from 'mongodb-memory-server'
+import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import mongoose from 'mongoose'
 import { buildApp } from '../server/app.mjs'
 import { connectMongo } from '../server/db.mjs'
 import { seedProductsIfEmpty } from '../server/seed.mjs'
 
 let app
-let mongod
+/** Replica set (POST /pedidos usa transação MongoDB; instância standalone falha). */
+let replSet
 /** @type {Record<string, string | undefined>} */
 const savedEnv = {}
 
@@ -24,8 +25,10 @@ beforeAll(async () => {
     savedEnv[k] = process.env[k]
   }
 
-  mongod = await MongoMemoryServer.create()
-  process.env.MONGODB_URI = mongod.getUri()
+  replSet = await MongoMemoryReplSet.create({
+    replSet: { count: 1, storageEngine: 'wiredTiger' }
+  })
+  process.env.MONGODB_URI = replSet.getUri()
   process.env.JWT_SECRET = 'unit-test-jwt-secret-at-least-32-bytes'
   process.env.ADMIN_PASSWORD = 'integration-test-password'
   process.env.ADMIN_API_KEY = ''
@@ -40,7 +43,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await mongoose.disconnect()
-  if (mongod) await mongod.stop()
+  if (replSet) await replSet.stop()
   for (const [k, v] of Object.entries(savedEnv)) {
     if (v === undefined) delete process.env[k]
     else process.env[k] = v
@@ -139,6 +142,38 @@ describe('proteção de gestão (JWT)', () => {
       .expect(200)
     const token = login.body.token
     await request(app).post('/produtos').set('Authorization', `Bearer ${token}`).send({}).expect(400)
+  })
+
+  it('POST /produtos com JWT grava imagens e tamanhos no MongoDB', async () => {
+    const login = await request(app)
+      .post('/auth/login')
+      .send({ password: 'integration-test-password' })
+      .expect(200)
+    const token = login.body.token
+    const body = {
+      nome: 'Peça integração',
+      marca: 'Teste',
+      categoria: 'Camisetas e blusas',
+      preco: 29.9,
+      estoque: 3,
+      uso: 'Descrição teste',
+      imagens: ['https://example.com/a.jpg', 'https://example.com/b.jpg'],
+      tamanhos: ['P', 'M', 'G'],
+      custom: true,
+      modelo: false
+    }
+    const res = await request(app)
+      .post('/produtos')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body)
+      .expect(201)
+    expect(res.body.id).toMatch(/^[a-f0-9]{24}$/i)
+    expect(res.body.imagens).toHaveLength(2)
+    expect(res.body.tamanhos).toEqual(['P', 'M', 'G'])
+    const again = await request(app).get('/produtos').expect(200)
+    const found = again.body.find((p) => p.id === res.body.id)
+    expect(found).toBeTruthy()
+    expect(found.tamanhos).toEqual(['P', 'M', 'G'])
   })
 })
 

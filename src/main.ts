@@ -57,6 +57,9 @@ type Product = {
   preco: number
   /** URLs ou data URLs; frente, costas, lateral… (máx. 10). */
   imagens: string[]
+  /** Unidades por tamanho (ex.: P: 3, M: 4, G: 2). */
+  estoquePorTamanho: Partial<Record<PieceSize, number>>
+  /** Soma do estoque por tamanho (compatível com dados antigos só com número único). */
   estoque: number
   uso: string
   /** Tamanhos disponíveis para o cliente escolher no catálogo. */
@@ -64,6 +67,48 @@ type Product = {
   custom?: boolean // adicionado pelo admin
   /** Peça de exemplo (imagens em /modelos/); pode remover no painel */
   modelo?: boolean
+}
+
+function splitLegacyEstoqueTotal(total: number, tamanhos: PieceSize[]): Partial<Record<PieceSize, number>> {
+  const le = Math.max(0, Math.floor(total))
+  const n = tamanhos.length || 1
+  const base = Math.floor(le / n)
+  let rem = le - base * n
+  const out: Partial<Record<PieceSize, number>> = {}
+  for (const sz of tamanhos) {
+    out[sz] = base + (rem > 0 ? 1 : 0)
+    if (rem > 0) rem--
+  }
+  return out
+}
+
+function totalEstoqueFromMap(m: Partial<Record<PieceSize, number>>, tamanhos: PieceSize[]): number {
+  return tamanhos.reduce((s, t) => s + Math.max(0, Math.floor(Number(m[t] ?? 0))), 0)
+}
+
+function normalizeEstoquePorTamanhoRecord(
+  raw: unknown,
+  tamanhos: PieceSize[],
+  legacyEstoque: number
+): Partial<Record<PieceSize, number>> {
+  const out: Partial<Record<PieceSize, number>> = {}
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>
+    for (const sz of tamanhos) {
+      const v = Number(o[sz])
+      out[sz] = Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0
+    }
+    return out
+  }
+  return splitLegacyEstoqueTotal(legacyEstoque, tamanhos)
+}
+
+function stockForSize(p: Product, size: PieceSize): number {
+  return Math.max(0, Math.floor(Number(p.estoquePorTamanho?.[size] ?? 0)))
+}
+
+function productHasAnyStock(p: Product): boolean {
+  return p.tamanhos.some((t) => stockForSize(p, t) > 0)
 }
 
 type AppState = {
@@ -86,7 +131,7 @@ type AppState = {
 // ─── Catálogo base: peças modelo (imagens em /public/modelos/) na primeira visita ───
 
 function seedModeloProducts(): Product[] {
-  const base: Omit<Product, 'tamanhos'>[] = [
+  const base: Array<Omit<Product, 'tamanhos' | 'estoquePorTamanho'>> = [
     {
       id: 'modelo-camisa-1',
       nome: 'Camisa modelo 1',
@@ -184,7 +229,12 @@ function seedModeloProducts(): Product[] {
       modelo: true
     }
   ]
-  return base.map((p) => ({ ...p, tamanhos: [...APPAREL_SIZES] }))
+  return base.map((p) => {
+    const tamanhos = [...APPAREL_SIZES]
+    const estoquePorTamanho = splitLegacyEstoqueTotal(p.estoque, tamanhos)
+    const estoque = totalEstoqueFromMap(estoquePorTamanho, tamanhos)
+    return { ...p, tamanhos, estoquePorTamanho, estoque }
+  })
 }
 
 // ─── Persistência (LocalStorage) ─────────────────────────────────────────────
@@ -560,6 +610,12 @@ function escapeAttr(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
 }
 
+/** Índice vindo de `data-index` (evita ambiguidade com `Number('0') || 0`). */
+function parseDataIndex(raw: string | undefined): number {
+  const n = Number.parseInt(String(raw ?? ''), 10)
+  return Number.isFinite(n) && n >= 0 ? n : 0
+}
+
 function loadBranding(): StoreBranding {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.branding)
@@ -747,6 +803,71 @@ function productSizesForCategory(category: Category): PieceSize[] {
   return category === 'Calçados' ? [...SHOE_SIZES] : [...APPAREL_SIZES]
 }
 
+/** Campos numéricos de estoque por tamanho no formulário admin (`name="estoque_${sz}"`). */
+function adminEstoqueGridFieldsHtml(
+  sizes: PieceSize[],
+  estoquePorTamanho: Partial<Record<PieceSize, number>> | undefined
+): string {
+  return sizes
+    .map((sz) => {
+      const v = Math.max(0, Math.floor(Number(estoquePorTamanho?.[sz] ?? 0)))
+      return `
+      <label class="admin-estoque-cell">
+        <span class="admin-estoque-sz">${escapeHtml(sz)}</span>
+        <input
+          type="number"
+          min="0"
+          step="1"
+          name="estoque_${sz}"
+          data-estoque-size="${escapeAttr(sz)}"
+          value="${v}"
+          aria-label="Estoque tamanho ${escapeAttr(sz)}"
+        />
+      </label>`
+    })
+    .join('')
+}
+
+function readFormEstoquePorTamanho(form: HTMLFormElement, sizes: PieceSize[]): Partial<Record<PieceSize, number>> {
+  const out: Partial<Record<PieceSize, number>> = {}
+  for (const sz of sizes) {
+    const el = form.querySelector<HTMLInputElement>(`input[name="estoque_${sz}"]`)
+    out[sz] = Math.max(0, Math.floor(Number(el?.value ?? 0)))
+  }
+  return out
+}
+
+function fichaEstoqueDetalheHtml(p: Product): string {
+  const sizes = p.tamanhos.length ? p.tamanhos : productSizesForCategory(p.categoria)
+  const parts = sizes.map((sz) => `${sz}: ${stockForSize(p, sz)}`)
+  return `${p.estoque} un. no total (${parts.join(' · ')})`
+}
+
+function adminTableStockRowHtml(p: Product, rowIndex: number): string {
+  const sizes = p.tamanhos.length ? p.tamanhos : productSizesForCategory(p.categoria)
+  return `<div class="admin-stock-row admin-estoque-grid compact" role="group" aria-label="Estoque por tamanho de ${escapeAttr(p.nome)}">
+    ${sizes
+      .map(
+        (sz) => `
+      <label class="admin-estoque-cell">
+        <span class="admin-estoque-sz">${escapeHtml(sz)}</span>
+        <input
+          type="number"
+          min="0"
+          step="1"
+          class="stock-edit-input"
+          value="${stockForSize(p, sz)}"
+          data-action="admin-stock-size"
+          data-index="${rowIndex}"
+          data-size="${escapeAttr(sz)}"
+          aria-label="Estoque ${escapeAttr(sz)} de ${escapeAttr(p.nome)}"
+        />
+      </label>`
+      )
+      .join('')}
+  </div>`
+}
+
 function normalizeProductSizes(raw: unknown, category: Category): PieceSize[] {
   const allowed = productSizesForCategory(category)
   if (!Array.isArray(raw)) return allowed
@@ -759,7 +880,7 @@ function normalizeProductSizes(raw: unknown, category: Category): PieceSize[] {
 }
 
 function normalizeProduct(raw: unknown): Product {
-  const p = raw as Partial<Product> & { imagem?: unknown; tamanhos?: unknown }
+  const p = raw as Partial<Product> & { imagem?: unknown; tamanhos?: unknown; estoquePorTamanho?: unknown }
   let imagens: string[] = []
   if (Array.isArray(p.imagens)) {
     imagens = p.imagens
@@ -770,24 +891,30 @@ function normalizeProduct(raw: unknown): Product {
   const legacyImg = typeof p.imagem === 'string' ? p.imagem.trim() : ''
   if (!imagens.length && legacyImg) imagens = [legacyImg]
 
-  let estoque: number
+  let legacyEstoque: number
   if (typeof p.estoque === 'number' && !Number.isNaN(p.estoque)) {
-    estoque = Math.max(0, Math.floor(p.estoque))
+    legacyEstoque = Math.max(0, Math.floor(p.estoque))
   } else {
-    estoque = LEGACY_DEFAULT_ESTOQUE
+    legacyEstoque = LEGACY_DEFAULT_ESTOQUE
   }
+
+  const cat = normalizeCategory(p.categoria)
+  const tamanhos = normalizeProductSizes(p.tamanhos, cat)
+  const estoquePorTamanho = normalizeEstoquePorTamanhoRecord(p.estoquePorTamanho, tamanhos, legacyEstoque)
+  const estoque = totalEstoqueFromMap(estoquePorTamanho, tamanhos)
 
   return {
     id: String(p.id ?? `item-${Date.now()}`),
     nome: String(p.nome ?? 'Produto'),
     marca: String(p.marca ?? '—'),
-    categoria: normalizeCategory(p.categoria),
+    categoria: cat,
     subcategoria: typeof p.subcategoria === 'string' && p.subcategoria.trim() ? p.subcategoria.trim() : undefined,
     preco: typeof p.preco === 'number' && !Number.isNaN(p.preco) ? p.preco : 0,
     imagens,
+    estoquePorTamanho,
     estoque,
     uso: String(p.uso ?? ''),
-    tamanhos: normalizeProductSizes(p.tamanhos, normalizeCategory(p.categoria)),
+    tamanhos,
     custom: p.custom === true,
     modelo: (p as Partial<Product>).modelo === true
   }
@@ -1012,11 +1139,23 @@ let customerProfiles = loadCustomerProfiles()
 
 applyDocumentBranding()
 
-/** Em `npm run dev`, tenta substituir o catálogo pelo retorno da API (servidor em paralelo). */
+/**
+ * Sincroniza produtos (e upload de fotos) com a API / MongoDB.
+ * Em `npm run dev` sempre ativo. Em build de produção fica ativo por padrão;
+ * defina `VITE_SYNC_PRODUCTS_FROM_API=false` só se o front for hospedado sem API (ex.: GitHub Pages puro).
+ */
+function shouldSyncProductsToApi(): boolean {
+  if (import.meta.env.DEV) return true
+  return import.meta.env.VITE_SYNC_PRODUCTS_FROM_API !== 'false'
+}
+
+function shouldTryServerUpload(): boolean {
+  return shouldSyncProductsToApi()
+}
+
+/** Ao carregar o app, se a sincronização estiver ativa, substitui o catálogo pelo GET /produtos. */
 async function tryReplaceProductsFromApiIfDev() {
-  const allow =
-    import.meta.env.DEV || import.meta.env.VITE_SYNC_PRODUCTS_FROM_API === 'true'
-  if (!allow) return
+  if (!shouldSyncProductsToApi()) return
   const data = await storeApi.fetchProdutos(2800)
   if (data === null) return
   products = data.map(normalizeProduct)
@@ -1088,10 +1227,6 @@ const categories: Array<'todas' | Category> = ['todas', ...CATEGORY_VALUES]
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
-function shouldTryServerUpload(): boolean {
-  return import.meta.env.DEV || import.meta.env.VITE_SYNC_PRODUCTS_FROM_API === 'true'
-}
-
 /** Tabela HTML dos pedidos retornados por GET /pedidos. */
 function adminPedidosTableHtml(list: unknown[]): string {
   const rows = list
@@ -1144,6 +1279,8 @@ let adminSecretTapCount = 0
 let adminSecretTapResetTimer: ReturnType<typeof setTimeout> | null = null
 const catalogSelectedSizes: Record<string, PieceSize> = {}
 const catalogImageIndexByProduct: Record<string, number> = {}
+/** Evita listeners duplicados em `.catalog-products-wrap` a cada refresh da grade. */
+let catalogGridListenersAbort: AbortController | null = null
 
 function notifySalvoComSucesso(): void {
   alert('Salvo com sucesso.')
@@ -1199,25 +1336,22 @@ function productQtyInCart(productId: string): number {
   return total
 }
 
-/** Ajusta carrinho para não ultrapassar estoque total do produto somando todos os tamanhos. */
-function enforceCartStockForProduct(productId: string, maxStock: number): boolean {
-  const keys = Object.keys(appState.cart).filter((k) => parseCartItemKey(k).productId === productId)
-  const total = keys.reduce((sum, key) => sum + (appState.cart[key] ?? 0), 0)
-  if (total <= maxStock) return false
-  let overflow = total - Math.max(0, maxStock)
-  for (let i = keys.length - 1; i >= 0 && overflow > 0; i -= 1) {
-    const key = keys[i]
+/** Ajusta quantidades do carrinho ao estoque disponível por tamanho. */
+function enforceCartStockForProduct(productId: string, product: Product): boolean {
+  let changed = false
+  for (const key of Object.keys(appState.cart)) {
+    const parsed = parseCartItemKey(key)
+    if (parsed.productId !== productId) continue
     const qty = appState.cart[key] ?? 0
     if (qty <= 0) continue
-    if (qty <= overflow) {
-      delete appState.cart[key]
-      overflow -= qty
-    } else {
-      appState.cart[key] = qty - overflow
-      overflow = 0
+    const max = stockForSize(product, parsed.size)
+    if (qty > max) {
+      if (max <= 0) delete appState.cart[key]
+      else appState.cart[key] = max
+      changed = true
     }
   }
-  return true
+  return changed
 }
 
 function selectedSizeFromProductCard(productId: string): PieceSize {
@@ -1304,7 +1438,7 @@ function syncCartWithStock() {
     const parsed = parseCartItemKey(key)
     const p = products.find((pr) => pr.id === parsed.productId)
     if (!p) continue
-    changed = enforceCartStockForProduct(parsed.productId, p.estoque) || changed
+    changed = enforceCartStockForProduct(parsed.productId, p) || changed
   }
   if (changed) persistState()
 }
@@ -1377,17 +1511,13 @@ function updateQty(id: string, qty: number, smoothUi = false) {
   if (qty <= 0) {
     delete appState.cart[id]
   } else if (product) {
-    const currentTotal = productQtyInCart(parsed.productId)
-    const currentLine = appState.cart[id] ?? 0
-    const nextTotal = currentTotal - currentLine + qty
-    if (product.estoque <= 0) {
-      alert('Item sem estoque.')
+    const maxLine = stockForSize(product, parsed.size)
+    if (maxLine <= 0) {
+      alert('Item sem estoque neste tamanho.')
       delete appState.cart[id]
-    } else if (nextTotal > product.estoque) {
-      const allowedForLine = Math.max(0, product.estoque - (currentTotal - currentLine))
-      alert(`Só há ${product.estoque} unidade(s) disponível(is).`)
-      if (allowedForLine <= 0) delete appState.cart[id]
-      else appState.cart[id] = allowedForLine
+    } else if (qty > maxLine) {
+      alert(`Só há ${maxLine} unidade(s) disponível(is) no tamanho ${parsed.size}.`)
+      appState.cart[id] = maxLine
     } else {
       appState.cart[id] = qty
     }
@@ -1643,19 +1773,19 @@ function productGalleryUrls(p: Product): string[] {
   return u.length ? u.map(productImageUrl) : [productImageUrl('')]
 }
 
-/** Mensagem de estoque na vitrine (texto combinado com o pedido do cliente). */
-function catalogStockLabel(p: Product, qtyInCart: number): string {
-  const e = p.estoque
-  if (e <= 0) return 'Item sem estoque'
-  if (qtyInCart > e) return `Só há ${e} unidade(s) disponível(is)`
-  if (qtyInCart >= e) return 'Quantidade máxima em estoque'
-  return 'Item com estoque'
+/** Mensagem de estoque na vitrine para o tamanho selecionado. */
+function catalogStockLabel(p: Product, qtyInCartForSize: number, size: PieceSize): string {
+  const e = stockForSize(p, size)
+  if (e <= 0) return 'Sem estoque neste tamanho'
+  if (qtyInCartForSize > e) return `Só há ${e} unidade(s) neste tamanho`
+  if (qtyInCartForSize >= e) return 'Quantidade máxima neste tamanho'
+  return `${e} un. disponível(is) no tamanho ${size}`
 }
 
-function catalogStockClass(p: Product, qtyInCart: number): string {
-  const e = p.estoque
+function catalogStockClass(p: Product, qtyInCartForSize: number, size: PieceSize): string {
+  const e = stockForSize(p, size)
   if (e <= 0) return 'stock-out'
-  if (qtyInCart >= e) return 'stock-warn'
+  if (qtyInCartForSize >= e) return 'stock-warn'
   return 'stock-ok'
 }
 
@@ -1872,18 +2002,48 @@ function catalogProductCardHtml(p: Product): string {
   const currentImageIndexRaw = catalogImageIndexByProduct[p.id] ?? 0
   const currentImageIndex = Math.max(0, Math.min(gallery.length - 1, currentImageIndexRaw))
   const currentImage = gallery[currentImageIndex] ?? productImageUrl('')
-  const chipLine =
-    p.subcategoria != null && String(p.subcategoria).trim()
-      ? `<p class="chip">${escapeHtml(String(p.subcategoria).trim())}</p>`
-      : ''
-  const stockCls = catalogStockClass(p, totalQty)
-  const stockLabel = escapeHtml(catalogStockLabel(p, totalQty))
-  const plusDisabled = p.estoque <= 0 || totalQty >= p.estoque
+  const stockCls = catalogStockClass(p, qty, selectedSize)
+  const stockLabel = escapeHtml(catalogStockLabel(p, qty, selectedSize))
+  const lineStock = stockForSize(p, selectedSize)
+  const plusDisabled = lineStock <= 0 || qty >= lineStock
   const sizeOptions = p.tamanhos
     .map((size) => `<option value="${size}" ${size === selectedSize ? 'selected' : ''}>${size}</option>`)
     .join('')
+  const catalogImgExtraAttrs = /^https?:\/\//i.test(currentImage)
+    ? ' referrerpolicy="no-referrer" decoding="async"'
+    : ' decoding="async"'
+
+  const thumbsHtml =
+    gallery.length > 1
+      ? `
+            <div class="product-catalog-thumbs" role="group" aria-label="Miniaturas — ${escapeAttr(p.nome)}">
+              ${gallery
+                .map(
+                  (src, i) => `
+              <button
+                type="button"
+                class="product-catalog-thumb ${i === currentImageIndex ? 'active' : ''}"
+                data-action="select-thumb"
+                data-id="${p.id}"
+                data-index="${i}"
+                aria-label="Mostrar foto ${i + 1} de ${gallery.length}"
+                ${i === currentImageIndex ? 'aria-current="true"' : ''}
+              >
+                <img
+                  src="${escapeAttr(src)}"
+                  alt=""
+                  loading="lazy"
+                  onerror="this.src='https://placehold.co/80x80/e8f0fe/1a3a6b?text=Foto'"
+                />
+              </button>`
+                )
+                .join('')}
+            </div>`
+      : ''
+
   return `
           <article class="product-card">
+            <div class="product-card-gallery${gallery.length > 1 ? ' product-card-gallery--multi' : ''}">
             <div class="product-img-wrap">
               <img
                 class="product-carousel-slide"
@@ -1894,27 +2054,22 @@ function catalogProductCardHtml(p: Product): string {
                 data-index="${currentImageIndex}"
                 src="${escapeAttr(currentImage)}"
                 alt="${escapeHtml(p.nome)}"
-                loading="eager"
+                title="Clique para ampliar a foto"
+                aria-label="Ampliar foto de ${escapeAttr(p.nome)}"
+                loading="eager"${catalogImgExtraAttrs}
                 onerror="this.src='https://placehold.co/400x220/e8f0fe/1a3a6b?text=Foto'"
               />
-              ${
-                gallery.length > 1
-                  ? `
-                <button type="button" class="product-carousel-nav prev" data-action="prev-image" data-id="${p.id}" aria-label="Foto anterior">‹</button>
-                <button type="button" class="product-carousel-nav next" data-action="next-image" data-id="${p.id}" aria-label="Próxima foto">›</button>
-              `
-                  : ''
-              }
               ${p.custom ? '<span class="badge-custom">Personalizado</span>' : ''}
               ${p.modelo ? '<span class="badge-modelo">Exemplo</span>' : ''}
-              ${
+              <span class="product-carousel-hint muted small" aria-hidden="true">${
                 gallery.length > 1
-                  ? `<span class="product-carousel-hint muted small">Use ‹ e › para ver mais fotos</span>`
-                  : ''
-              }
+                  ? 'Toque nas miniaturas ou na foto para ampliar'
+                  : 'Toque na foto para ampliar'
+              }</span>
+            </div>
+            ${thumbsHtml}
             </div>
             <div class="product-body">
-              ${chipLine}
               <h3>${escapeHtml(p.nome)}</h3>
               <p class="muted small">${escapeHtml(p.marca)}</p>
               <p class="stock-msg ${stockCls}">${stockLabel}</p>
@@ -1936,8 +2091,8 @@ function catalogProductCardHtml(p: Product): string {
                   <button class="qty-btn" data-action="plus" data-id="${p.id}" aria-label="Aumentar" ${plusDisabled ? 'disabled' : ''}>+</button>
                 </div>
               </div>
-              <button class="btn primary full-width mt4" data-action="open-cart" ${totalQty === 0 || p.estoque <= 0 ? 'disabled' : ''}>
-                ${p.estoque <= 0 ? 'Indisponível' : totalQty > 0 ? `Ir para carrinho (${totalQty})` : 'Selecione tamanho e use + / -'}
+              <button class="btn primary full-width mt4" data-action="open-cart" ${totalQty === 0 || !productHasAnyStock(p) ? 'disabled' : ''}>
+                ${!productHasAnyStock(p) ? 'Indisponível' : totalQty > 0 ? `Ir para carrinho (${totalQty})` : 'Selecione tamanho e use + / -'}
               </button>
             </div>
           </article>`
@@ -1990,99 +2145,113 @@ function bindCatalogGridActions() {
   const wrap = document.querySelector('.catalog-products-wrap')
   if (!wrap) return
 
+  catalogGridListenersAbort?.abort()
+  catalogGridListenersAbort = new AbortController()
+  const { signal } = catalogGridListenersAbort
+
   wrap.querySelectorAll<HTMLButtonElement>('[data-action="plus"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const productId = btn.dataset.id!
-      const size = selectedSizeFromProductCard(productId)
-      const key = buildCartItemKey(productId, size)
-      updateQty(key, (appState.cart[key] ?? 0) + 1, true)
-    })
+    btn.addEventListener(
+      'click',
+      () => {
+        const productId = btn.dataset.id!
+        const size = selectedSizeFromProductCard(productId)
+        const key = buildCartItemKey(productId, size)
+        updateQty(key, (appState.cart[key] ?? 0) + 1, true)
+      },
+      { signal }
+    )
   })
 
   wrap.querySelectorAll<HTMLButtonElement>('[data-action="minus"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const productId = btn.dataset.id!
-      const size = selectedSizeFromProductCard(productId)
-      const key = buildCartItemKey(productId, size)
-      updateQty(key, (appState.cart[key] ?? 0) - 1, true)
-    })
+    btn.addEventListener(
+      'click',
+      () => {
+        const productId = btn.dataset.id!
+        const size = selectedSizeFromProductCard(productId)
+        const key = buildCartItemKey(productId, size)
+        updateQty(key, (appState.cart[key] ?? 0) - 1, true)
+      },
+      { signal }
+    )
   })
 
   wrap.querySelectorAll<HTMLSelectElement>('[data-action="size"]').forEach((sel) => {
-    sel.addEventListener('change', () => {
-      const productId = sel.dataset.id ?? ''
-      if (productId) {
-        const parsed = normalizeSize(sel.value)
-        if (parsed) catalogSelectedSizes[productId] = parsed
-      }
-      refreshCatalogGrid()
-    })
+    sel.addEventListener(
+      'change',
+      () => {
+        const productId = sel.dataset.id ?? ''
+        if (productId) {
+          const parsed = normalizeSize(sel.value)
+          if (parsed) catalogSelectedSizes[productId] = parsed
+        }
+        refreshCatalogGrid()
+      },
+      { signal }
+    )
   })
 
   wrap.querySelectorAll<HTMLButtonElement>('[data-action="open-cart"]').forEach((btn) => {
-    btn.addEventListener('click', () => setStep('carrinho'))
+    btn.addEventListener('click', () => setStep('carrinho'), { signal })
   })
 
-  wrap.querySelectorAll<HTMLButtonElement>('[data-action="open-tech"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      appState.fichaTecnicaId = btn.dataset.id ?? null
-      render()
-    })
-  })
+  /* open-tech: já ligado em bindEvents() no catálogo */
 
-  const changeCatalogImageByDirection = (productId: string, direction: 1 | -1) => {
-    const p = products.find((x) => x.id === productId)
-    if (!p) return
-    const total = productGalleryUrls(p).length
-    if (total <= 1) return
-    const current = catalogImageIndexByProduct[productId] ?? 0
-    const nextRaw = current + direction
-    const next = nextRaw < 0 ? total - 1 : nextRaw >= total ? 0 : nextRaw
-    catalogImageIndexByProduct[productId] = next
-    refreshCatalogGrid()
-  }
+  wrap.addEventListener(
+    'click',
+    (e) => {
+      const target = e.target as HTMLElement
+      const thumbBtn = target.closest<HTMLButtonElement>('[data-action="select-thumb"]')
+      if (thumbBtn) {
+        e.preventDefault()
+        e.stopPropagation()
+        const productId = thumbBtn.dataset.id ?? ''
+        const idx = parseDataIndex(thumbBtn.dataset.index)
+        if (!productId) return
+        catalogImageIndexByProduct[productId] = idx
+        refreshCatalogGrid()
+        window.requestAnimationFrame(() => {
+          document.querySelectorAll<HTMLButtonElement>('[data-action="select-thumb"]').forEach((b) => {
+            if (b.dataset.id === productId && parseDataIndex(b.dataset.index) === idx) {
+              b.closest('.product-card')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+            }
+          })
+        })
+        return
+      }
+      const imgWrap = target.closest('.product-img-wrap')
+      if (imgWrap) {
+        const img = imgWrap.querySelector<HTMLImageElement>('img[data-action="open-image"]')
+        if (img) {
+          e.preventDefault()
+          const productId = img.dataset.id ?? ''
+          const idx = parseDataIndex(img.dataset.index)
+          if (!productId) return
+          imageViewerState = { productId, index: idx }
+          render()
+        }
+      }
+    },
+    { signal }
+  )
 
-  wrap.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement
-    const prevBtn = target.closest<HTMLButtonElement>('[data-action="prev-image"]')
-    if (prevBtn) {
-      e.preventDefault()
-      const productId = prevBtn.dataset.id ?? ''
-      if (productId) changeCatalogImageByDirection(productId, -1)
-      return
-    }
-    const nextBtn = target.closest<HTMLButtonElement>('[data-action="next-image"]')
-    if (nextBtn) {
-      e.preventDefault()
-      const productId = nextBtn.dataset.id ?? ''
-      if (productId) changeCatalogImageByDirection(productId, 1)
-      return
-    }
-    const img = target.closest<HTMLElement>('img[data-action="open-image"]')
-    if (img) {
-      e.preventDefault()
-      const productId = img.dataset.id ?? ''
-      const idx = Math.max(0, Number(img.dataset.index ?? '0') || 0)
-      if (!productId) return
-      imageViewerState = { productId, index: idx }
-      render()
-    }
-  })
-
-  wrap.addEventListener('keydown', (evt) => {
-    const e = evt as KeyboardEvent
-    const target = e.target as HTMLElement
-    const img = target.closest<HTMLElement>('img[data-action="open-image"]')
-    if (!img) return
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      const productId = img.dataset.id ?? ''
-      const idx = Math.max(0, Number(img.dataset.index ?? '0') || 0)
-      if (!productId) return
-      imageViewerState = { productId, index: idx }
-      render()
-    }
-  })
+  wrap.addEventListener(
+    'keydown',
+    (evt) => {
+      const e = evt as KeyboardEvent
+      const target = e.target as HTMLElement
+      const img = target.closest<HTMLElement>('img[data-action="open-image"]')
+      if (!img) return
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        const productId = img.dataset.id ?? ''
+        const idx = parseDataIndex(img.dataset.index)
+        if (!productId) return
+        imageViewerState = { productId, index: idx }
+        render()
+      }
+    },
+    { signal }
+  )
 }
 
 function refreshCatalogGrid() {
@@ -2157,9 +2326,9 @@ function cartScreen() {
           <div class="qty-wrap inline">
             <button class="qty-btn" data-action="minus" data-id="${item.id}" aria-label="Diminuir">−</button>
             <span class="qty-value">${item.qty}</span>
-            <button class="qty-btn" data-action="plus" data-id="${item.id}" aria-label="Aumentar" ${productQtyInCart(item.product.id) >= item.product.estoque ? 'disabled' : ''}>+</button>
+            <button class="qty-btn" data-action="plus" data-id="${item.id}" aria-label="Aumentar" ${item.qty >= stockForSize(item.product, item.size) ? 'disabled' : ''}>+</button>
           </div>
-          <p class="stock-msg ${catalogStockClass(item.product, productQtyInCart(item.product.id))} small" style="margin-top:6px;">${escapeHtml(catalogStockLabel(item.product, productQtyInCart(item.product.id)))}</p>
+          <p class="stock-msg ${catalogStockClass(item.product, item.qty, item.size)} small" style="margin-top:6px;">${escapeHtml(catalogStockLabel(item.product, item.qty, item.size))}</p>
         </td>
         <td data-label="Unitário">${currency.format(item.product.preco)}</td>
         <td data-label="Subtotal"><strong>${currency.format(item.subtotal)}</strong></td>
@@ -2428,20 +2597,7 @@ function adminScreen() {
         <td data-label="Preço">
           <strong>${currency.format(p.preco)}</strong>
         </td>
-        <td data-label="Estoque">
-          <div class="admin-stock-row">
-            <input
-              class="stock-edit-input"
-              type="number"
-              min="0"
-              step="1"
-              value="${Math.max(0, Math.floor(p.estoque))}"
-              data-action="admin-stock"
-              data-index="${i}"
-              aria-label="Estoque de ${escapeAttr(p.nome)}"
-            />
-          </div>
-        </td>
+        <td data-label="Estoque">${adminTableStockRowHtml(p, i)}</td>
         <td data-label="Ações">
           <button class="btn tiny" data-action="admin-edit" data-index="${i}" aria-label="Editar cadastro de ${escapeAttr(p.nome)}">Editar cadastro</button>
           <button class="btn tiny" data-action="admin-save-stock" data-index="${i}" aria-label="Salvar novo estoque de ${escapeAttr(p.nome)}">Salvar estoque</button>
@@ -2455,6 +2611,12 @@ function adminScreen() {
   const optionsHtml = (categories.filter((c) => c !== 'todas') as Category[])
     .map((c) => `<option value="${c}" ${editingProduct?.categoria === c ? 'selected' : ''}>${c}</option>`)
     .join('')
+  const adminFormCategoryDefault = editingProduct?.categoria ?? CATEGORY_VALUES[0]
+  const adminFormEstoqueSizes = productSizesForCategory(adminFormCategoryDefault)
+  const adminFormEstoqueHtml = adminEstoqueGridFieldsHtml(
+    adminFormEstoqueSizes,
+    editingProduct?.estoquePorTamanho
+  )
 
   const b = storeBranding
   const logoPreviewSrc = escapeAttr(
@@ -2689,9 +2851,10 @@ function adminScreen() {
             Preço (R$) *
             <input required type="number" min="0" step="0.01" name="preco" placeholder="0,00" value="${editingProduct ? String(editingProduct.preco) : ''}" />
           </label>
-          <label>
-            Estoque inicial *
-            <input required type="number" min="0" step="1" name="estoque" value="${editingProduct ? String(Math.max(0, Math.floor(editingProduct.estoque))) : '0'}" placeholder="0" />
+          <label class="full">
+            Estoque por tamanho *
+            <span class="muted small" style="display:block;margin-top:4px;">Informe quantas unidades há em cada tamanho (ex.: 3 em P, 4 em M, 2 em G).</span>
+            <div id="admin-estoque-por-tamanho-wrap" class="admin-estoque-grid">${adminFormEstoqueHtml}</div>
           </label>
           <label class="full">
             URL da imagem (opcional)
@@ -2813,7 +2976,7 @@ function template() {
             <p><strong>Marca:</strong> ${escapeHtml(fichaProduto.marca)}</p>
             <p><strong>Categoria:</strong> ${escapeHtml(fichaProduto.categoria)}${fichaProduto.subcategoria ? ` · ${escapeHtml(fichaProduto.subcategoria)}` : ''}</p>
             <p><strong>Preço:</strong> ${currency.format(fichaProduto.preco)}</p>
-            <p><strong>Estoque:</strong> ${fichaProduto.estoque} un.</p>
+            <p><strong>Estoque:</strong> ${escapeHtml(fichaEstoqueDetalheHtml(fichaProduto))}</p>
             <p><strong>Descrição:</strong> ${escapeHtml(fichaProduto.uso)}</p>
           </div>
         </div>
@@ -2865,9 +3028,7 @@ function template() {
                 </div>`
               : ''
           }
-          <p class="muted small image-viewer-caption">${escapeHtml(imageViewerProduct.nome)}${
-            imageViewerGallery.length > 1 ? ` • ${imageViewerIndex + 1}/${imageViewerGallery.length}` : ''
-          }</p>
+          <p class="muted small image-viewer-caption">${escapeHtml(imageViewerProduct.nome)} • Foto ${imageViewerIndex + 1} de ${imageViewerGallery.length}</p>
         </div>
       </div>
     `
@@ -2920,6 +3081,21 @@ function template() {
 function bindEvents() {
   if (!adminSecretBound) {
     document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (imageViewerState) {
+          e.preventDefault()
+          imageViewerState = null
+          render()
+          return
+        }
+        if (appState.fichaTecnicaId) {
+          e.preventDefault()
+          appState.fichaTecnicaId = null
+          persistState()
+          render()
+          return
+        }
+      }
       const isShortcutA = e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')
       const isShortcutB = e.ctrlKey && e.altKey && (e.key === 'A' || e.key === 'a')
       if (isShortcutA || isShortcutB) {
@@ -2979,13 +3155,20 @@ function bindEvents() {
     imageViewerState = { ...viewer, index: next }
     render()
   }
-  document.getElementById('image-viewer-prev')?.addEventListener('click', () => moveImageViewer(-1))
-  document.getElementById('image-viewer-next')?.addEventListener('click', () => moveImageViewer(1))
+  document.getElementById('image-viewer-prev')?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    moveImageViewer(-1)
+  })
+  document.getElementById('image-viewer-next')?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    moveImageViewer(1)
+  })
   document.querySelectorAll<HTMLButtonElement>('[data-action="image-viewer-thumb"]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
       const viewer = imageViewerState
       if (!viewer) return
-      const idx = Math.max(0, Number(btn.dataset.index ?? '0') || 0)
+      const idx = parseDataIndex(btn.dataset.index)
       imageViewerState = { ...viewer, index: idx }
       render()
     })
@@ -3230,21 +3413,20 @@ function bindEvents() {
         }
       }
 
-      for (const product of products) {
-        const qty = productQtyInCart(product.id)
-        if (qty <= 0) continue
-        if (qty > product.estoque) {
+      for (const line of cartItems()) {
+        const max = stockForSize(line.product, line.size)
+        if (line.qty > max) {
           alert(
-            product.estoque <= 0
-              ? `"${product.nome}" está sem estoque. Ajuste o carrinho.`
-              : `"${product.nome}": só há ${product.estoque} unidade(s) disponível(is).`
+            max <= 0
+              ? `"${line.product.nome}" (${line.size}): sem estoque neste tamanho. Ajuste o carrinho.`
+              : `"${line.product.nome}" (${line.size}): só há ${max} unidade(s).`
           )
           return
         }
       }
 
       const useApiPedido =
-        (import.meta.env.DEV || import.meta.env.VITE_SYNC_PRODUCTS_FROM_API === 'true') &&
+        shouldSyncProductsToApi() &&
         cartItems().length > 0 &&
         cartItems().every(({ product }) => storeApi.isMongoObjectId(product.id))
 
@@ -3271,9 +3453,16 @@ function bindEvents() {
       }
 
       products = products.map((pr) => {
-        const q = productQtyInCart(pr.id)
-        if (!q || q <= 0) return pr
-        return { ...pr, estoque: Math.max(0, pr.estoque - q) }
+        const lines = cartItems().filter((it) => it.product.id === pr.id)
+        if (!lines.length) return pr
+        const nextMap: Partial<Record<PieceSize, number>> = { ...pr.estoquePorTamanho }
+        for (const it of lines) {
+          const sz = it.size
+          const cur = stockForSize(pr, sz)
+          nextMap[sz] = Math.max(0, cur - it.qty)
+        }
+        const estoque = totalEstoqueFromMap(nextMap, pr.tamanhos)
+        return { ...pr, estoquePorTamanho: nextMap, estoque }
       })
       saveProducts(products)
 
@@ -3633,13 +3822,28 @@ function bindEvents() {
   const adminForm = document.getElementById('admin-form') as HTMLFormElement | null
   const adminCategorySelect = adminForm?.querySelector<HTMLSelectElement>('select[name="categoria"]') ?? null
   const adminTextSizeWrap = document.getElementById('admin-tamanho-texto-wrap') as HTMLLabelElement | null
-  const adminTextSizeInput = adminForm?.querySelector<HTMLInputElement>('input[name="tamanhoProduto"]') ?? null
+  const adminTextSizeSelect = adminForm?.querySelector<HTMLSelectElement>('select[name="tamanhoProduto"]') ?? null
   const adminShoeSizeWrap = document.getElementById('admin-tamanho-calcado-wrap') as HTMLLabelElement | null
   const adminShoeSizeSelect = adminForm?.querySelector<HTMLSelectElement>('select[name="tamanhoCalcado"]') ?? null
   const adminImageUrlInput = adminForm?.querySelector<HTMLInputElement>('input[name="imagemUrl"]') ?? null
   const adminUrlPreviewHint = document.getElementById('admin-url-preview-hint')
   const adminUrlPreviewImg = document.getElementById('admin-url-preview-img') as HTMLImageElement | null
   const adminAddUrlImageBtn = document.getElementById('admin-add-url-image') as HTMLButtonElement | null
+
+  const syncAdminEstoqueGrid = () => {
+    const wrap = document.getElementById('admin-estoque-por-tamanho-wrap')
+    if (!wrap || !adminCategorySelect) return
+    const cat = adminCategorySelect.value as Category
+    const sizes = productSizesForCategory(cat)
+    const prev: Partial<Record<PieceSize, number>> = {}
+    wrap.querySelectorAll<HTMLInputElement>('input[data-estoque-size]').forEach((el) => {
+      const sz = el.dataset.estoqueSize as PieceSize | undefined
+      if (sz) prev[sz] = Math.max(0, Math.floor(Number(el.value) || 0))
+    })
+    const merged: Partial<Record<PieceSize, number>> = {}
+    for (const sz of sizes) merged[sz] = prev[sz] ?? 0
+    wrap.innerHTML = adminEstoqueGridFieldsHtml(sizes, merged)
+  }
 
   const syncAdminSizeFieldsByCategory = () => {
     const categoryValue = String(adminCategorySelect?.value ?? '')
@@ -3648,22 +3852,27 @@ function bindEvents() {
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
     const isShoes = categoryValue === 'calcados'
-    if (!adminTextSizeWrap || !adminTextSizeInput || !adminShoeSizeWrap || !adminShoeSizeSelect) return
+    if (!adminTextSizeWrap || !adminTextSizeSelect || !adminShoeSizeWrap || !adminShoeSizeSelect) return
     adminShoeSizeWrap.hidden = !isShoes
     adminTextSizeWrap.hidden = Boolean(isShoes)
     adminShoeSizeWrap.style.display = isShoes ? '' : 'none'
     adminTextSizeWrap.style.display = isShoes ? 'none' : ''
     adminShoeSizeSelect.required = Boolean(isShoes)
-    adminTextSizeInput.required = false
+    adminTextSizeSelect.required = false
     if (isShoes) {
-      adminTextSizeInput.value = ''
+      adminTextSizeSelect.value = ''
     }
+    syncAdminEstoqueGrid()
   }
 
   adminCategorySelect?.addEventListener('change', syncAdminSizeFieldsByCategory)
   adminCategorySelect?.addEventListener('input', syncAdminSizeFieldsByCategory)
-  adminForm?.addEventListener('input', syncAdminSizeFieldsByCategory)
-  adminForm?.addEventListener('change', syncAdminSizeFieldsByCategory)
+  adminForm?.addEventListener('input', (ev) => {
+    if (ev.target === adminCategorySelect) syncAdminSizeFieldsByCategory()
+  })
+  adminForm?.addEventListener('change', (ev) => {
+    if (ev.target === adminCategorySelect) syncAdminSizeFieldsByCategory()
+  })
   syncAdminSizeFieldsByCategory()
   window.setTimeout(syncAdminSizeFieldsByCategory, 0)
 
@@ -3745,14 +3954,12 @@ function bindEvents() {
       const tamanhosCategoria = productSizesForCategory(categoria)
       const preco = parseFloat(get('preco'))
       const uso = get('uso')
-      const estoqueIni = Math.max(0, Math.floor(Number(get('estoque'))))
+      const estoquePorTamanhoRaw = readFormEstoquePorTamanho(adminForm, tamanhosCategoria)
+      const estoquePorTamanho = normalizeEstoquePorTamanhoRecord(estoquePorTamanhoRaw, tamanhosCategoria, 0)
+      const estoqueIni = totalEstoqueFromMap(estoquePorTamanho, tamanhosCategoria)
       const imagemUrl = get('imagemUrl')
       if (!nome || !categoria || isNaN(preco) || !uso) {
         alert('Preencha os campos obrigatórios do produto.')
-        return
-      }
-      if (Number.isNaN(estoqueIni)) {
-        alert('Informe o estoque inicial (número inteiro ≥ 0).')
         return
       }
       const imagensFromUpload =
@@ -3779,8 +3986,7 @@ function bindEvents() {
         : -1
       const editingProduct = editingIndex >= 0 ? products[editingIndex] : null
 
-      const useApi =
-        import.meta.env.DEV || import.meta.env.VITE_SYNC_PRODUCTS_FROM_API === 'true'
+      const useApi = shouldSyncProductsToApi()
       if (editingProduct && useApi && storeApi.isMongoObjectId(editingProduct.id)) {
         const r = await storeApi.patchProdutoJson(editingProduct.id, {
           nome,
@@ -3791,6 +3997,7 @@ function bindEvents() {
           imagens,
           tamanhos: tamanhosCategoria,
           estoque: estoqueIni,
+          estoquePorTamanho,
           uso,
           custom: editingProduct.custom === true,
           modelo: editingProduct.modelo === true
@@ -3805,7 +4012,11 @@ function bindEvents() {
           render()
           return
         }
-        alert('API: não foi possível atualizar o produto (' + r.erro + '). Salvando só no navegador.')
+        alert(
+          'API: não foi possível atualizar o produto (' +
+            r.erro +
+            '). Verifique MongoDB, login na API (JWT) ou VITE_ADMIN_API_KEY. Salvando só no navegador.'
+        )
       } else if (!editingProduct && useApi) {
         const r = await storeApi.postProdutoJson({
           nome,
@@ -3816,6 +4027,7 @@ function bindEvents() {
           imagens,
           tamanhos: tamanhosCategoria,
           estoque: estoqueIni,
+          estoquePorTamanho,
           uso,
           custom: true,
           modelo: false
@@ -3829,7 +4041,11 @@ function bindEvents() {
           render()
           return
         }
-        alert('API: não foi possível criar o produto (' + r.erro + '). Salvando só no navegador.')
+        alert(
+          'API: não foi possível criar o produto (' +
+            r.erro +
+            '). Verifique MongoDB, login na API (JWT) ou VITE_ADMIN_API_KEY. Salvando só no navegador.'
+        )
       }
 
       if (editingProduct) {
@@ -3842,6 +4058,7 @@ function bindEvents() {
           preco,
           imagens,
           tamanhos: tamanhosCategoria,
+          estoquePorTamanho,
           estoque: estoqueIni,
           uso
         }
@@ -3857,6 +4074,7 @@ function bindEvents() {
           preco,
           imagens,
           tamanhos: tamanhosCategoria,
+          estoquePorTamanho,
           estoque: estoqueIni,
           uso,
           custom: true,
@@ -3918,16 +4136,31 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       const idx = Number(btn.dataset.index)
       void (async () => {
-        const input = document.querySelector<HTMLInputElement>(`[data-action="admin-stock"][data-index="${idx}"]`)
         const cur = products[idx]
-        const next = Number(input?.value)
-        if (!cur || !input || Number.isNaN(next) || next < 0 || !Number.isInteger(next)) {
-          alert('Informe um estoque válido (número inteiro ≥ 0).')
-          input?.focus()
+        if (!cur) return
+        const inputs = document.querySelectorAll<HTMLInputElement>(
+          `[data-action="admin-stock-size"][data-index="${idx}"]`
+        )
+        if (!inputs.length) {
+          alert('Campos de estoque não encontrados.')
           return
         }
+        const map: Partial<Record<PieceSize, number>> = { ...cur.estoquePorTamanho }
+        for (const el of inputs) {
+          const sz = el.dataset.size as PieceSize | undefined
+          if (!sz || !cur.tamanhos.includes(sz)) continue
+          const n = Math.floor(Number(el.value))
+          if (Number.isNaN(n) || n < 0) {
+            alert('Informe estoque válido (número inteiro ≥ 0) em cada tamanho.')
+            el.focus()
+            return
+          }
+          map[sz] = n
+        }
+        const estoquePorTamanho = normalizeEstoquePorTamanhoRecord(map, cur.tamanhos, 0)
+        const estoque = totalEstoqueFromMap(estoquePorTamanho, cur.tamanhos)
         if (storeApi.isMongoObjectId(cur.id)) {
-          const r = await storeApi.patchProdutoJson(cur.id, { estoque: next })
+          const r = await storeApi.patchProdutoJson(cur.id, { estoque, estoquePorTamanho })
           if (r.ok) {
             products[idx] = normalizeProduct(r.data)
             saveProducts(products)
@@ -3937,7 +4170,7 @@ function bindEvents() {
           }
           alert('API: ' + r.erro)
         }
-        products[idx] = { ...cur, estoque: next }
+        products[idx] = { ...cur, estoque, estoquePorTamanho }
         saveProducts(products)
         notifySalvoComSucesso()
         render()
@@ -3954,8 +4187,7 @@ function bindEvents() {
     }
     void (async () => {
       const modelos = products.filter((p) => p.modelo)
-      const useApi =
-        import.meta.env.DEV || import.meta.env.VITE_SYNC_PRODUCTS_FROM_API === 'true'
+      const useApi = shouldSyncProductsToApi()
       if (useApi) {
         for (const p of modelos) {
           if (storeApi.isMongoObjectId(p.id)) await storeApi.deleteProduto(p.id)
@@ -3976,8 +4208,7 @@ function bindEvents() {
   document.getElementById('reset-products')?.addEventListener('click', () => {
     if (!confirm('Remover todos os produtos cadastrados? Esta ação não pode ser desfeita.')) return
     void (async () => {
-      const useApi =
-        import.meta.env.DEV || import.meta.env.VITE_SYNC_PRODUCTS_FROM_API === 'true'
+      const useApi = shouldSyncProductsToApi()
       if (useApi && products.every((p) => storeApi.isMongoObjectId(p.id))) {
         for (const p of products) {
           await storeApi.deleteProduto(p.id)
@@ -3995,6 +4226,10 @@ function bindEvents() {
   })
 
   document.getElementById('back-from-admin')?.addEventListener('click', () => setStep('catalogo'))
+
+  if (appState.step === 'catalogo') {
+    bindCatalogGridActions()
+  }
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────

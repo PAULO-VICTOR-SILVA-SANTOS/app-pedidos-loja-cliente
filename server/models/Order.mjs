@@ -5,6 +5,7 @@ const orderItemSchema = new mongoose.Schema(
     productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
     nome: { type: String, required: true },
     qty: { type: Number, required: true, min: 1 },
+    tamanho: { type: String, default: '' },
     precoUnit: { type: Number, required: true },
     subtotal: { type: Number, required: true }
   },

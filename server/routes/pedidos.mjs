@@ -34,20 +34,39 @@ pedidosRouter.post('/', postPedidoLimiter, async (req, res) => {
     for (const line of items) {
       const pid = line.productId
       const qty = Math.floor(Number(line.qty))
+      const tamanho = String(line.tamanho ?? '').trim()
       if (!mongoose.isValidObjectId(pid)) {
         throw new Error('ID de produto inválido no pedido')
       }
       if (qty < 1) throw new Error('Quantidade inválida')
       const p = await Product.findById(pid).session(session)
       if (!p) throw new Error(`Produto não encontrado: ${pid}`)
-      if (p.estoque < qty) {
-        throw new Error(`Estoque insuficiente para "${p.nome}". Disponível: ${p.estoque}`)
+
+      const map = p.estoquePorTamanho && typeof p.estoquePorTamanho === 'object' ? p.estoquePorTamanho : null
+      const hasPerSize = map && Object.keys(map).length > 0
+
+      if (hasPerSize) {
+        if (!tamanho) throw new Error(`Informe o tamanho no item: "${p.nome}"`)
+        const cur = Math.max(0, Math.floor(Number(map[tamanho] ?? 0)))
+        if (cur < qty) {
+          throw new Error(`Estoque insuficiente para "${p.nome}" (${tamanho}). Disponível: ${cur}`)
+        }
+        map[tamanho] = cur - qty
+        p.estoquePorTamanho = map
+        p.estoque = Object.values(map).reduce((a, v) => a + Math.max(0, Math.floor(Number(v) || 0)), 0)
+      } else {
+        if (p.estoque < qty) {
+          throw new Error(`Estoque insuficiente para "${p.nome}". Disponível: ${p.estoque}`)
+        }
+        p.estoque = Math.max(0, p.estoque - qty)
       }
-      await Product.updateOne({ _id: p._id }, { $inc: { estoque: -qty } }).session(session)
+      await p.save({ session })
+
       orderItems.push({
         productId: p._id,
         nome: p.nome,
         qty,
+        tamanho,
         precoUnit: p.preco,
         subtotal: qty * p.preco
       })
