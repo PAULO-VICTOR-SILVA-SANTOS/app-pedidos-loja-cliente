@@ -1,0 +1,3 @@
+App de pedidos — Castro Multimarcas é um aplicativo full stack que digitaliza o fluxo de catálogo, carrinho e conclusões de pedidos enviados a contexto de lojista e escritório (negócio B2B), com gerenciamento de produtos, estoque por tamanho e envio de imagens a partir de um painel protegido.
+
+O objetivo do repositório é servir de prova concreta de entrega em stack moderna: front tipado, API versionável, persistência com transações quando necessário, autenticação, rate limiting, uploads e suíte de testes — alinhados ao que se espera em produtos reais e ambientes de produção (incluindo notas de implantação e variações de ambiente documentadas)
