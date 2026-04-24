@@ -1320,6 +1320,9 @@ if (localStorage.getItem(STORAGE_KEYS.products) === null) {
 }
 let customerProfiles = loadCustomerProfiles()
 
+/** Mensagem no catálogo quando não foi possível substituir a lista pelo GET /produtos (senão o usuário vê só peças modelo). */
+let apiCatalogSyncMessage: string | null = null
+
 applyDocumentBranding()
 
 /**
@@ -1338,9 +1341,33 @@ function shouldTryServerUpload(): boolean {
 
 /** Ao carregar o app, se a sincronização estiver ativa, substitui o catálogo pelo GET /produtos. */
 async function tryReplaceProductsFromApiIfDev() {
-  if (!shouldSyncProductsToApi()) return
-  const data = await storeApi.fetchProdutos(2800)
-  if (data === null) return
+  if (!shouldSyncProductsToApi()) {
+    apiCatalogSyncMessage = null
+    return
+  }
+
+  const origin = storeApi.apiOrigin()
+  const prod = import.meta.env.PROD
+
+  if (!origin && prod) {
+    apiCatalogSyncMessage =
+      'Este site foi publicado sem VITE_API_URL: o navegador não sabe onde está sua API, então não baixa o catálogo do MongoDB. Você acaba vendo só as peças de exemplo (fotos antigas do sistema). Corrija na Vercel em Settings → Environment Variables: adicione VITE_API_URL = https://sua-api.onrender.com (sem barra no final), salve e faça Redeploy. No celular pode parecer normal se o app já tinha dados salvos antes.'
+    render()
+    return
+  }
+
+  const data = await storeApi.fetchProdutos(12000)
+  if (data === null) {
+    apiCatalogSyncMessage = prod
+      ? origin
+        ? `Não foi possível carregar ${origin}/produtos (API fora do ar, bloqueio de rede ou CORS). O catálogo exibido pode ser só de exemplo ou desatualizado.`
+        : 'Não foi possível sincronizar o catálogo com o servidor.'
+      : 'Não foi possível carregar /produtos. Rode a API (npm run server) ou npm run dev:all no projeto.'
+    render()
+    return
+  }
+
+  apiCatalogSyncMessage = null
   products = data.map(normalizeProduct)
   saveProducts(products)
   render()
@@ -1350,6 +1377,7 @@ async function tryReplaceProductsFromApiIfDev() {
 async function refreshProductsFromApi(): Promise<boolean> {
   const data = await storeApi.fetchProdutos(8000)
   if (data === null) return false
+  apiCatalogSyncMessage = null
   products = data.map(normalizeProduct)
   saveProducts(products)
   render()
@@ -2496,6 +2524,12 @@ function catalogoScreen() {
     )
     .join('')
   const cardsHtml = catalogCardsHtml()
+  const catalogSyncBanner = apiCatalogSyncMessage
+    ? `<div class="catalog-api-warning card" role="alert">
+        <p class="small" style="margin:0 0 10px;line-height:1.45;">${escapeHtml(apiCatalogSyncMessage)}</p>
+        <button type="button" class="btn tiny" id="catalog-retry-api-sync">Tentar carregar o catálogo de novo</button>
+      </div>`
+    : ''
 
   return `
     <section class="screen fade-in">
@@ -2518,6 +2552,8 @@ function catalogoScreen() {
           </button>
         </div>
       </header>
+
+      ${catalogSyncBanner}
 
       ${storeAboutCardHtml()}
 
@@ -3596,6 +3632,9 @@ function bindEvents() {
     appState.filtroCategoria = (e.target as HTMLSelectElement).value as 'todas' | Category
     refreshCatalogGrid()
     persistState()
+  })
+  document.getElementById('catalog-retry-api-sync')?.addEventListener('click', () => {
+    void tryReplaceProductsFromApiIfDev()
   })
 
   // Carrinho

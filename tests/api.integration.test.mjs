@@ -88,11 +88,26 @@ describe('POST /pedidos', () => {
   it('rejeita id de produto inválido', async () => {
     await request(app)
       .post('/pedidos')
-      .send({ items: [{ productId: 'nope', qty: 1 }], total: 10 })
+      .send({ items: [{ productId: 'nope', qty: 1 }], total: 10, deliveryFee: 0 })
       .expect(400)
   })
 
-  it('cria pedido com produto do catálogo', async () => {
+  it('rejeita total divergente do calculado no servidor', async () => {
+    const listRes = await request(app).get('/produtos')
+    const first = listRes.body[0]
+    const pid = first.id
+    const preco = Number(first.preco) || 10
+    await request(app)
+      .post('/pedidos')
+      .send({
+        items: [{ productId: String(pid), qty: 1 }],
+        total: preco + 5,
+        deliveryFee: 0
+      })
+      .expect(400)
+  })
+
+  it('cria pedido com produto do catálogo (número gerado no servidor)', async () => {
     const listRes = await request(app).get('/produtos')
     const first = listRes.body[0]
     expect(first).toBeTruthy()
@@ -103,11 +118,12 @@ describe('POST /pedidos', () => {
       .send({
         items: [{ productId: String(pid), qty: 1 }],
         total: preco,
-        numero: 'TEST-001',
+        deliveryFee: 0,
         customer: { nomeCompleto: 'Teste' }
       })
       .expect(201)
     expect(res.body.ok).toBe(true)
+    expect(res.body.numero).toMatch(/^PED-/)
     expect(res.body.orderId).toMatch(/^[a-f0-9]{24}$/i)
   })
 })
@@ -125,7 +141,8 @@ describe('proteção de gestão (JWT)', () => {
       .expect(200)
     const token = login.body.token
     const res = await request(app).get('/pedidos').set('Authorization', `Bearer ${token}`).expect(200)
-    expect(Array.isArray(res.body)).toBe(true)
+    expect(Array.isArray(res.body.items)).toBe(true)
+    expect(typeof res.body.total).toBe('number')
   })
 
   it('POST /produtos exige credencial', async () => {

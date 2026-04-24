@@ -161,6 +161,12 @@ textarea.admin-descricao-empresa {
   line-height: 1.4;
 }
 
+.catalog-api-warning {
+  border: 1px solid rgba(196, 92, 38, 0.65);
+  background: rgba(196, 92, 38, 0.09);
+  margin-bottom: 14px;
+}
+
 input:focus,
 select:focus,
 textarea:focus {

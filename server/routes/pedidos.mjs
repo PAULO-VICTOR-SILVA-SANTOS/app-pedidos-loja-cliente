@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import express from 'express'
 import rateLimit from 'express-rate-limit'
 import mongoose from 'mongoose'
@@ -16,9 +17,23 @@ const postPedidoLimiter = rateLimit({
   legacyHeaders: false
 })
 
+function roundMoney(n) {
+  return Math.round(Number(n) * 100) / 100
+}
+
+/** Compara valores monetários em centavos (evita float). */
+function moneyEquals(a, b) {
+  return Math.round(Number(a) * 100) === Math.round(Number(b) * 100)
+}
+
+function generateOrderNumero() {
+  return `PED-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`
+}
+
 /**
- * POST /pedidos — valida estoque, baixa quantidades e grava pedido (transação).
- * Corpo: { numero, items: [{ productId, qty }], total, customer?, deliveryMode?, paymentMethod?, cashChangeFor? }
+ * POST /pedidos — valida estoque, recalcula total com preços do banco, baixa estoque e grava pedido (transação).
+ * Corpo: { items: [{ productId, qty, tamanho? }], total, deliveryFee?, customer?, deliveryMode?, paymentMethod?, cashChangeFor? }
+ * O campo `numero` do cliente é ignorado; o número oficial é gerado no servidor e devolvido na resposta.
  */
 pedidosRouter.post('/', postPedidoLimiter, async (req, res) => {
   const b = req.body || {}
@@ -31,6 +46,8 @@ pedidosRouter.post('/', postPedidoLimiter, async (req, res) => {
   session.startTransaction()
   try {
     const orderItems = []
+    let sumSubtotal = 0
+
     for (const line of items) {
       const pid = line.productId
       const qty = Math.floor(Number(line.qty))
@@ -62,30 +79,44 @@ pedidosRouter.post('/', postPedidoLimiter, async (req, res) => {
       }
       await p.save({ session })
 
+      const precoUnit = roundMoney(Number(p.preco))
+      const subtotal = roundMoney(qty * precoUnit)
+      sumSubtotal = roundMoney(sumSubtotal + subtotal)
+
       orderItems.push({
         productId: p._id,
         nome: p.nome,
         qty,
         tamanho,
-        precoUnit: p.preco,
-        subtotal: qty * p.preco
+        precoUnit,
+        subtotal
       })
     }
 
-    const total = Number(b.total)
-    if (Number.isNaN(total) || total < 0) {
+    const deliveryFee = Math.max(0, roundMoney(Number(b.deliveryFee) || 0))
+    const expectedTotal = roundMoney(sumSubtotal + deliveryFee)
+    const clientTotal = roundMoney(Number(b.total))
+
+    if (Number.isNaN(clientTotal) || clientTotal < 0) {
       throw new Error('Total do pedido inválido')
     }
+    if (!moneyEquals(expectedTotal, clientTotal)) {
+      throw new Error(
+        `Total divergente do calculado no servidor (${expectedTotal.toFixed(2)}). Atualize a página e tente novamente.`
+      )
+    }
 
-    const numero = String(b.numero || '').trim() || `PDO-${Date.now().toString(36)}`
+    const customer =
+      b.customer && typeof b.customer === 'object' && !Array.isArray(b.customer) ? b.customer : {}
 
+    const numero = generateOrderNumero()
     const [order] = await Order.create(
       [
         {
           numero,
           items: orderItems,
-          total,
-          customer: b.customer && typeof b.customer === 'object' ? b.customer : {},
+          total: expectedTotal,
+          customer,
           deliveryMode: String(b.deliveryMode ?? ''),
           paymentMethod: String(b.paymentMethod ?? ''),
           cashChangeFor: String(b.cashChangeFor ?? '')
@@ -105,10 +136,24 @@ pedidosRouter.post('/', postPedidoLimiter, async (req, res) => {
   }
 })
 
-pedidosRouter.get('/', requireAdminWhenConfigured, async (_req, res) => {
+const DEFAULT_LIST_LIMIT = 100
+const MAX_LIST_LIMIT = 500
+
+pedidosRouter.get('/', requireAdminWhenConfigured, async (req, res) => {
   try {
-    const list = await Order.find().sort({ createdAt: -1 }).limit(100).lean()
-    res.json(list)
+    const rawLimit = parseInt(String(req.query.limit ?? ''), 10)
+    const rawSkip = parseInt(String(req.query.skip ?? ''), 10)
+    const limit = Math.min(
+      MAX_LIST_LIMIT,
+      Math.max(1, Number.isFinite(rawLimit) ? rawLimit : DEFAULT_LIST_LIMIT)
+    )
+    const skip = Math.max(0, Number.isFinite(rawSkip) ? rawSkip : 0)
+
+    const [list, total] = await Promise.all([
+      Order.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Order.countDocuments()
+    ])
+    res.json({ items: list, total, limit, skip })
   } catch (e) {
     console.error(e)
     res.status(500).json({ erro: 'Falha ao listar pedidos' })

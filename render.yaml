@@ -1,0 +1,36 @@
+# Blueprint Render: cria um Web Service só com a API (Node + Express).
+# 1) Conecte o repositório no Render e use este arquivo como Blueprint, OU
+# 2) Crie manualmente um Web Service (Node) com os mesmos comandos abaixo.
+#
+# Depois de criado, defina no painel do Render (Environment):
+#   MONGODB_URI      — string Atlas (obrigatório)
+#   ADMIN_API_KEY    — chave forte (obrigatório para proteger POST /produtos, /upload, GET /pedidos)
+#   JWT_SECRET       — recomendado; o painel usa "Entrar na API" com Bearer
+#   ADMIN_PASSWORD   — senha do login (se vazio, usa ADMIN_API_KEY)
+#   PUBLIC_API_URL   — URL pública desta API (ex.: https://castro-api.onrender.com) para links de /upload em disco
+#   CLOUDINARY_URL   — opcional; sem isso, uploads vão para disco (ephemeral no free tier — prefira Cloudinary)
+#
+# No projeto Vercel (front), defina VITE_API_URL com a MESMA URL pública da API e faça redeploy.
+
+services:
+  - type: web
+    name: castro-pedidos-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20.18.0"
+      - key: MONGODB_URI
+        sync: false
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: PUBLIC_API_URL
+        sync: false

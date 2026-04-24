@@ -14,7 +14,8 @@ const orderItemSchema = new mongoose.Schema(
 
 const orderSchema = new mongoose.Schema(
   {
-    numero: { type: String, required: true, trim: true },
+    /** Gerado no servidor; único para evitar colisão e duplicidade. */
+    numero: { type: String, required: true, trim: true, unique: true },
     items: { type: [orderItemSchema], required: true },
     total: { type: Number, required: true, min: 0 },
     customer: { type: mongoose.Schema.Types.Mixed, default: {} },
@@ -24,5 +25,7 @@ const orderSchema = new mongoose.Schema(
   },
   { timestamps: true }
 )
+
+orderSchema.index({ createdAt: -1 })
 
 export const Order = mongoose.model('Order', orderSchema)
