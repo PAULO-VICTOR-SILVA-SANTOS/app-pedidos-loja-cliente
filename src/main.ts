@@ -3218,7 +3218,7 @@ function adminScreen() {
           <label class="full">
             URL da imagem (opcional)
             <input
-              type="url"
+              type="text"
               name="imagemUrl"
               placeholder="https://site.com/minha-imagem.jpg"
               inputmode="url"
@@ -3254,7 +3254,7 @@ function adminScreen() {
             <input required name="uso" placeholder="Tecido, modelagem, cuidados na lavagem…" value="${escapeAttr(editingProduct?.uso ?? '')}" />
           </label>
           <div class="full form-actions">
-            <button type="submit" class="btn primary">${editingProduct ? 'Salvar alterações do item' : 'Salvar e adicionar ao catálogo'}</button>
+            <button type="submit" formnovalidate class="btn primary">${editingProduct ? 'Salvar alterações do item' : 'Salvar e adicionar ao catálogo'}</button>
             ${editingProduct ? '<button type="button" class="btn" id="admin-cancel-edit">Cancelar edição</button>' : ''}
           </div>
         </form>
@@ -4335,8 +4335,11 @@ function bindEvents() {
 
   adminForm?.addEventListener('submit', (e) => {
     e.preventDefault()
+    const liveForm = (e.currentTarget ?? e.target) as HTMLFormElement | null
+    if (!liveForm || liveForm.id !== 'admin-form') return
     void (async () => {
-      const fd = new FormData(adminForm)
+      try {
+      const fd = new FormData(liveForm)
       const get = (k: string) => String(fd.get(k) ?? '').trim()
       const nome = get('nome')
       const marca = get('marca')
@@ -4347,7 +4350,7 @@ function bindEvents() {
       const tamanhosCategoria = productSizesForCategory(categoria)
       const preco = parseFloat(get('preco'))
       const uso = get('uso')
-      const estoquePorTamanhoRaw = readFormEstoquePorTamanho(adminForm, tamanhosCategoria)
+      const estoquePorTamanhoRaw = readFormEstoquePorTamanho(liveForm, tamanhosCategoria)
       const estoquePorTamanho = normalizeEstoquePorTamanhoRecord(estoquePorTamanhoRaw, tamanhosCategoria, 0)
       const estoqueIni = totalEstoqueFromMap(estoquePorTamanho, tamanhosCategoria)
       const imagemUrl = get('imagemUrl')
@@ -4404,7 +4407,7 @@ function bindEvents() {
           adminEditingProductId = null
           adminPendingImageDataUrls = []
           resetAdminPhotoDraftDirty()
-          adminForm.reset()
+          liveForm.reset()
           notifySalvoComSucesso()
           render()
           return
@@ -4440,7 +4443,7 @@ function bindEvents() {
           saveProducts(products)
           adminPendingImageDataUrls = []
           resetAdminPhotoDraftDirty()
-          adminForm.reset()
+          liveForm.reset()
           notifySalvoComSucesso()
           render()
           return
@@ -4495,9 +4498,15 @@ function bindEvents() {
       saveProducts(products)
       adminPendingImageDataUrls = []
       resetAdminPhotoDraftDirty()
-      adminForm.reset()
+      liveForm.reset()
       notifySalvoComSucesso()
       render()
+      } catch (err) {
+        console.error(err)
+        alert(
+          'Não foi possível salvar o produto. Se estiver no celular, verifique conexão e login na API; em seguida recarregue a página e tente de novo.'
+        )
+      }
     })()
   })
 
