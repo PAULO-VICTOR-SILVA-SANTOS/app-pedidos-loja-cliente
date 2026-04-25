@@ -3948,6 +3948,18 @@ function bindEvents() {
   const adminPickGallery = document.getElementById('admin-pick-gallery')
   const adminPickCamera = document.getElementById('admin-pick-camera')
   const adminClearPhoto = document.getElementById('admin-clear-photo')
+  const openFilePicker = (input: HTMLInputElement | null) => {
+    if (!input) return
+    try {
+      if (typeof input.showPicker === 'function') {
+        input.showPicker()
+        return
+      }
+    } catch {
+      // Alguns navegadores mobile bloqueiam showPicker em certas condições.
+    }
+    input.click()
+  }
 
   const appendAdminDataUrls = (urls: string[]) => {
     const next = [...adminPendingImageDataUrls]
@@ -3996,8 +4008,8 @@ function bindEvents() {
       reader.readAsDataURL(file)
     })
 
-  adminPickGallery?.addEventListener('click', () => adminFileGallery?.click())
-  adminPickCamera?.addEventListener('click', () => adminFileCamera?.click())
+  adminPickGallery?.addEventListener('click', () => openFilePicker(adminFileGallery))
+  adminPickCamera?.addEventListener('click', () => openFilePicker(adminFileCamera))
   adminFileGallery?.addEventListener('change', () => {
     void (async () => {
       const files = adminFileGallery?.files
