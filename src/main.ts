@@ -1171,7 +1171,12 @@ function loadProductsFromStorage(): Product[] {
 }
 
 function saveProducts(list: Product[]) {
-  localStorage.setItem(STORAGE_KEYS.products, JSON.stringify(list))
+  try {
+    localStorage.setItem(STORAGE_KEYS.products, JSON.stringify(list))
+  } catch (err) {
+    // Evita quebrar o cadastro quando o navegador estoura quota (comum com fotos em data URL no mobile).
+    console.warn('Falha ao salvar catálogo no localStorage; seguindo com dados em memória/API.', err)
+  }
 }
 
 function normalizeLookup(value: string): string {
