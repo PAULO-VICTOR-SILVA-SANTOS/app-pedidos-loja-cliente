@@ -19,6 +19,8 @@ const ADMIN_STOCK_ALERT_MIN = 2
 /** Intervalo do polling de estoque no admin quando `shouldSyncProductsToApi()` é verdadeiro. */
 const ADMIN_STOCK_POLL_MS = 20_000
 const ADMIN_STOCK_POLL_SEC = ADMIN_STOCK_POLL_MS / 1000
+/** Intervalo para sincronizar o catálogo no cliente com GET /produtos. */
+const CATALOG_SYNC_POLL_MS = 20_000
 /** Estoque usado quando o JSON antigo não tinha o campo `estoque`. */
 const LEGACY_DEFAULT_ESTOQUE = 999
 /** Estoque inicial das peças modelo de exemplo. */
@@ -290,6 +292,53 @@ function startAdminStockPolling() {
   if (appState.step !== 'admin' || !shouldSyncProductsToApi()) return
   void adminStockPollTick()
   adminStockPollTimer = setInterval(() => void adminStockPollTick(), ADMIN_STOCK_POLL_MS)
+}
+
+function catalogSyncFingerprint(list: Product[]): string {
+  return JSON.stringify(
+    list.map((p) => ({
+      id: p.id,
+      nome: p.nome,
+      preco: p.preco,
+      imagens: p.imagens,
+      tamanhos: p.tamanhos,
+      estoque: p.estoque,
+      estoquePorTamanho: p.estoquePorTamanho
+    }))
+  )
+}
+
+function stopCatalogSyncPolling() {
+  if (catalogSyncPollTimer !== null) {
+    clearInterval(catalogSyncPollTimer)
+    catalogSyncPollTimer = null
+  }
+}
+
+async function catalogSyncPollTick() {
+  if (appState.step !== 'catalogo' || !shouldSyncProductsToApi()) return
+  if (catalogSyncPollInFlight) return
+  catalogSyncPollInFlight = true
+  try {
+    const data = await storeApi.fetchProdutos(12000)
+    if (data === null || !Array.isArray(data)) return
+    const next = data.map(normalizeProduct)
+    if (catalogSyncFingerprint(next) === catalogSyncFingerprint(products)) return
+    products = next
+    saveProducts(products)
+    syncCartWithStock()
+    persistState()
+    render()
+  } finally {
+    catalogSyncPollInFlight = false
+  }
+}
+
+function startCatalogSyncPolling() {
+  stopCatalogSyncPolling()
+  if (appState.step !== 'catalogo' || !shouldSyncProductsToApi()) return
+  void catalogSyncPollTick()
+  catalogSyncPollTimer = setInterval(() => void catalogSyncPollTick(), CATALOG_SYNC_POLL_MS)
 }
 
 function productHasAnyStock(p: Product): boolean {
@@ -1590,6 +1639,8 @@ let adminSecretTapResetTimer: ReturnType<typeof setTimeout> | null = null
 let adminStockPollTimer: ReturnType<typeof setInterval> | null = null
 let adminStockLastSnapshot = new Map<string, number>()
 let adminStockPollInFlight = false
+let catalogSyncPollTimer: ReturnType<typeof setInterval> | null = null
+let catalogSyncPollInFlight = false
 const catalogSelectedSizes: Record<string, PieceSize> = {}
 const catalogImageIndexByProduct: Record<string, number> = {}
 /** Evita listeners duplicados em `.catalog-products-wrap` a cada refresh da grade. */
@@ -1771,6 +1822,9 @@ function setStep(step: Step) {
     resetAdminPhotoDraftDirty()
     brandingPendingLogoDataUrl = null
     stopAdminStockPolling(true)
+  }
+  if (step !== 'catalogo') {
+    stopCatalogSyncPolling()
   }
   appState.prevStep = appState.step
   appState.step = step
@@ -4656,6 +4710,7 @@ function bindEvents() {
   }
 
   if (appState.step === 'catalogo') {
+    startCatalogSyncPolling()
     bindCatalogGridActions()
   }
 }
