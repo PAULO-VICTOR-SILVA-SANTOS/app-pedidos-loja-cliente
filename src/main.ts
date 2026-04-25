@@ -4291,6 +4291,7 @@ function bindEvents() {
       const editingProduct = editingIndex >= 0 ? products[editingIndex] : null
 
       const useApi = shouldSyncProductsToApi()
+      const strictRemotePersistence = useApi && !import.meta.env.DEV
       let imagensForApi = imagens
       if (useApi && shouldTryServerUpload() && imagens.some((x) => String(x).trim().startsWith('data:'))) {
         imagensForApi = await ensureHttpImageUrlsForApi(imagens)
@@ -4324,8 +4325,14 @@ function bindEvents() {
         alert(
           'API: não foi possível atualizar o produto (' +
             r.erro +
-            '). Verifique MongoDB, login na API (JWT) ou VITE_ADMIN_API_KEY. Salvando só no navegador.'
+            '). Verifique MongoDB, login na API (JWT) ou VITE_ADMIN_API_KEY.'
         )
+        if (strictRemotePersistence) {
+          alert(
+            'Publicação em produção: alteração bloqueada para evitar salvar só neste aparelho. Corrija a conexão da API e tente novamente.'
+          )
+          return
+        }
       } else if (!editingProduct && useApi) {
         const r = await storeApi.postProdutoJson({
           nome,
@@ -4353,8 +4360,14 @@ function bindEvents() {
         alert(
           'API: não foi possível criar o produto (' +
             r.erro +
-            '). Verifique MongoDB, login na API (JWT) ou VITE_ADMIN_API_KEY. Salvando só no navegador.'
+            '). Verifique MongoDB, login na API (JWT) ou VITE_ADMIN_API_KEY.'
         )
+        if (strictRemotePersistence) {
+          alert(
+            'Publicação em produção: criação bloqueada para evitar salvar só neste aparelho. Corrija a conexão da API e tente novamente.'
+          )
+          return
+        }
       }
 
       if (editingProduct) {
